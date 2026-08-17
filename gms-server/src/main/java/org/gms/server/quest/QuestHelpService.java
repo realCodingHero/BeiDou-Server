@@ -72,6 +72,7 @@ public final class QuestHelpService {
     private final Map<Integer, List<MapLocation>> mobMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<MapLocation>> npcMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Boolean> regularMaterialCache = new ConcurrentHashMap<>();
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
@@ -185,18 +186,20 @@ public final class QuestHelpService {
         }
     }
 
-    private void resolvePath(DataProvider mapSource, DataEntity dataEntry, StringBuilder pathBuilder) {
-        DataEntity parent = dataEntry.getParent();
+    private void resolvePath(DataProvider mapSource, DataEntity fileEntry, StringBuilder pathBuilder) {
+        DataEntity parent = fileEntry.getParent();
         if (parent != null && parent != mapSource.getRoot()) {
-            pathBuilder.insert(0, parent.getName() + "/");
             resolvePath(mapSource, parent, pathBuilder);
+            pathBuilder.append(parent.getName()).append("/");
         }
     }
 
     public MapLocation getMapLocation(int mapId) {
-        return mapLocationCache.computeIfAbsent(mapId, id ->
-                new MapLocation(id, MapFactory.loadPlaceName(id), MapFactory.loadStreetName(id))
-        );
+        return mapLocationCache.computeIfAbsent(mapId, id -> {
+            String mapName = MapFactory.loadPlaceName(id);
+            String streetName = MapFactory.loadStreetName(id);
+            return new MapLocation(id, mapName, streetName);
+        });
     }
 
     public List<MapLocation> getMapsForMob(int mobId) {
@@ -329,6 +332,54 @@ public final class QuestHelpService {
         return Collections.unmodifiableList(dropMobs);
     }
 
+    /**
+     * 判断道具是否为单纯由普通怪物掉落的普通杂物材料（可供任务辅助快捷补齐）
+     * 严格排除：装备、消耗品、任务专属(403)、不可出售/不可交易/唯一道具、仅Boss掉落/箱子掉落道具
+     */
+    public boolean isRegularMonsterMaterial(int itemId) {
+        return regularMaterialCache.computeIfAbsent(itemId, id -> {
+            // 1. 类别必须为普通 ETC 杂物 (4000000 ~ 4029999)
+            if (id < 4000000 || id >= 4030000) {
+                return false;
+            }
+
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            if (ii.isQuestItem(id) || ii.isPartyQuestItem(id) || ii.isPickupRestricted(id) ||
+                ii.isUntradeableRestricted(id) || ii.isAccountRestricted(id) || ii.isDropRestricted(id)) {
+                return false;
+            }
+
+            Data itemData = ii.getItemData(id);
+            if (itemData != null) {
+                int notSale = DataTool.getIntConvert("info/notSale", itemData, 0);
+                int price = DataTool.getIntConvert("info/price", itemData, -1);
+                if (notSale == 1 || price <= 0) {
+                    return false;
+                }
+            }
+
+            // 2. 检查掉落来源：必须存在非 Boss 的普通野外怪物掉落
+            List<DropMobInfo> dropMobs = getDropMobsForItem(id);
+            if (dropMobs == null || dropMobs.isEmpty()) {
+                return false;
+            }
+
+            MonsterInformationProvider mip = MonsterInformationProvider.getInstance();
+            boolean hasRegularMob = false;
+            for (DropMobInfo mob : dropMobs) {
+                int mobId = mob.getMobId();
+                if (mobId > 0 && !mip.isBoss(mobId)) {
+                    if (mob.getMaps() != null && !mob.getMaps().isEmpty()) {
+                        hasRegularMob = true;
+                        break;
+                    }
+                }
+            }
+
+            return hasRegularMob;
+        });
+    }
+
     public List<QuestSummary> getStartedQuestSummaries(Character player) {
         if (player == null) {
             return Collections.emptyList();
@@ -341,9 +392,30 @@ public final class QuestHelpService {
             if (name == null || name.isBlank()) {
                 name = "任务 " + q.getId();
             }
-            list.add(new QuestSummary(q.getId(), name));
+            boolean canComplete = q.canComplete(player, null);
+            list.add(new QuestSummary(q.getId(), name, canComplete));
         }
         list.sort(Comparator.comparingInt(QuestSummary::getQuestId));
+        return Collections.unmodifiableList(list);
+    }
+
+    public List<QuestSummary> getCompletableQuestSummaries(Character player) {
+        List<QuestSummary> list = new ArrayList<>();
+        for (QuestSummary s : getStartedQuestSummaries(player)) {
+            if (s.isCanComplete()) {
+                list.add(s);
+            }
+        }
+        return Collections.unmodifiableList(list);
+    }
+
+    public List<QuestSummary> getInProgressQuestSummaries(Character player) {
+        List<QuestSummary> list = new ArrayList<>();
+        for (QuestSummary s : getStartedQuestSummaries(player)) {
+            if (!s.isCanComplete()) {
+                list.add(s);
+            }
+        }
         return Collections.unmodifiableList(list);
     }
 
@@ -364,6 +436,7 @@ public final class QuestHelpService {
         if (questName == null || questName.isBlank()) {
             questName = "任务 " + questId;
         }
+        boolean canComplete = q.canComplete(player, null);
 
         // 1. NPC Info
         int startNpcId = q.getNpcRequirement(false);
@@ -410,12 +483,146 @@ public final class QuestHelpService {
             if (iType != null && !iType.equals(InventoryType.UNDEFINED) && player.getInventory(iType) != null) {
                 currentCount = player.getInventory(iType).countById(itemId);
             }
+            boolean deliverable = isRegularMonsterMaterial(itemId);
             List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
-            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, dropMobs));
+            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, dropMobs));
         }
         itemObjectives.sort(Comparator.comparingInt(ItemObjective::getItemId));
 
-        return new QuestDetailInfo(questId, questName, startNpc, completeNpc, mobObjectives, itemObjectives);
+        return new QuestDetailInfo(questId, questName, canComplete, startNpc, completeNpc, mobObjectives, itemObjectives);
+    }
+
+    /**
+     * 单独补齐某一项任务普通怪物材料（带背包空间校验）
+     */
+    public DeliveryResult deliverQuestMaterial(Character player, int questId, int itemId) {
+        if (player == null || player.getClient() == null) {
+            return new DeliveryResult(false, "玩家状态异常。", 0);
+        }
+        QuestStatus qs = player.getQuest(Quest.getInstance(questId));
+        if (qs == null || !qs.getStatus().equals(QuestStatus.Status.STARTED)) {
+            return new DeliveryResult(false, "您尚未接取该任务或任务已结束。", 0);
+        }
+        Quest q = qs.getQuest();
+        if (q == null) {
+            return new DeliveryResult(false, "任务数据不存在。", 0);
+        }
+        Integer reqCount = q.getRequiredItems().get(itemId);
+        if (reqCount == null || reqCount <= 0) {
+            return new DeliveryResult(false, "该任务不需要此道具。", 0);
+        }
+        if (!isRegularMonsterMaterial(itemId)) {
+            return new DeliveryResult(false, "该道具属于特殊/剧情/Boss掉落道具，不支持快捷发放，请在游戏中探索获取！", 0);
+        }
+
+        InventoryType iType = ItemConstants.getInventoryType(itemId);
+        int currentCount = 0;
+        if (player.getInventory(iType) != null) {
+            currentCount = player.getInventory(iType).countById(itemId);
+        }
+        int neededCount = reqCount - currentCount;
+        if (neededCount <= 0) {
+            return new DeliveryResult(true, "您背包中已有足够的 【" + getItemName(itemId) + "】（" + currentCount + "/" + reqCount + "），无需补齐！", 0);
+        }
+
+        // 严格校验背包空间
+        if (!org.gms.client.inventory.manipulator.InventoryManipulator.checkSpace(player.getClient(), itemId, neededCount, "")) {
+            return new DeliveryResult(false, "您的【其它】背包空间不足，请清理出至少 1 个空闲格子后再试！", 0);
+        }
+
+        boolean added = org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) neededCount, "任务辅助补齐普通材料", -1);
+        if (!added) {
+            return new DeliveryResult(false, "发放道具失败，请检查背包空间后重试。", 0);
+        }
+
+        return new DeliveryResult(true, "已成功为您补齐 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + "！", neededCount);
+    }
+
+    /**
+     * 一键补齐当前任务所有符合条件的普通怪物材料（带渐进式背包空间校验）
+     */
+    public DeliveryResult deliverAllRegularMaterials(Character player, int questId) {
+        if (player == null || player.getClient() == null) {
+            return new DeliveryResult(false, "玩家状态异常。", 0);
+        }
+        QuestStatus qs = player.getQuest(Quest.getInstance(questId));
+        if (qs == null || !qs.getStatus().equals(QuestStatus.Status.STARTED)) {
+            return new DeliveryResult(false, "您尚未接取该任务或任务已结束。", 0);
+        }
+        Quest q = qs.getQuest();
+        if (q == null) {
+            return new DeliveryResult(false, "任务数据不存在。", 0);
+        }
+
+        Map<Integer, Integer> reqItems = q.getRequiredItems();
+        if (reqItems.isEmpty()) {
+            return new DeliveryResult(false, "该任务无需收集任何道具。", 0);
+        }
+
+        Map<Integer, Integer> toDeliver = new java.util.LinkedHashMap<>();
+        int deliverableItemTypes = 0;
+        int restrictedItemTypes = 0;
+
+        for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
+            int itemId = entry.getKey();
+            int req = entry.getValue();
+            if (isRegularMonsterMaterial(itemId)) {
+                deliverableItemTypes++;
+                InventoryType iType = ItemConstants.getInventoryType(itemId);
+                int cur = 0;
+                if (player.getInventory(iType) != null) {
+                    cur = player.getInventory(iType).countById(itemId);
+                }
+                int diff = req - cur;
+                if (diff > 0) {
+                    toDeliver.put(itemId, diff);
+                }
+            } else {
+                restrictedItemTypes++;
+            }
+        }
+
+        if (deliverableItemTypes == 0) {
+            return new DeliveryResult(false, "该任务所需道具均为特殊/剧情/Boss道具，不支持快捷发放，需手动探索获取！", 0);
+        }
+
+        if (toDeliver.isEmpty()) {
+            String msg = "该任务所需的所有普通怪物材料您已全部集齐！";
+            if (restrictedItemTypes > 0) {
+                msg += "\r\n#r注：尚有 " + restrictedItemTypes + " 种特殊/剧情道具需手动探索获取。#k";
+            }
+            return new DeliveryResult(true, msg, 0);
+        }
+
+        // 渐进式多物品背包空间模拟校验，确保多件物品不会溢出
+        int simulatedUsedSlots = 0;
+        for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
+            int itemId = entry.getKey();
+            int qty = entry.getValue();
+            int result = org.gms.client.inventory.manipulator.InventoryManipulator.checkSpaceProgressively(
+                    player.getClient(), itemId, qty, "", simulatedUsedSlots, false);
+            if (result < 0) {
+                return new DeliveryResult(false, "您的【其它】背包空间不足以容纳全部补齐材料，请清理出更多空闲格子后再试！", 0);
+            }
+            simulatedUsedSlots = result;
+        }
+
+        // 安全发放全部材料
+        int totalCount = 0;
+        StringBuilder sb = new StringBuilder("已成功为您补齐以下普通怪物材料：\r\n\r\n");
+        for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
+            int itemId = entry.getKey();
+            int qty = entry.getValue();
+            org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助补齐普通材料", -1);
+            totalCount += qty;
+            sb.append("#v").append(itemId).append("# 【#b").append(getItemName(itemId)).append("#k】 x").append(qty).append("\r\n");
+        }
+
+        if (restrictedItemTypes > 0) {
+            sb.append("\r\n#r注：该任务仍有 ").append(restrictedItemTypes).append(" 种特殊/剧情道具需手动探索获取。#k");
+        }
+
+        return new DeliveryResult(true, sb.toString(), totalCount);
     }
 
     private static int parseProgress(String progress) {
@@ -451,13 +658,39 @@ public final class QuestHelpService {
     }
 
     // Models
+    public static class DeliveryResult {
+        private final boolean success;
+        private final String message;
+        private final int totalItemsDelivered;
+
+        public DeliveryResult(boolean success, String message, int totalItemsDelivered) {
+            this.success = success;
+            this.message = message;
+            this.totalItemsDelivered = totalItemsDelivered;
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public int getTotalItemsDelivered() {
+            return totalItemsDelivered;
+        }
+    }
+
     public static class QuestSummary {
         private final int questId;
         private final String questName;
+        private final boolean canComplete;
 
-        public QuestSummary(int questId, String questName) {
+        public QuestSummary(int questId, String questName, boolean canComplete) {
             this.questId = questId;
             this.questName = questName;
+            this.canComplete = canComplete;
         }
 
         public int getQuestId() {
@@ -466,6 +699,10 @@ public final class QuestHelpService {
 
         public String getQuestName() {
             return questName;
+        }
+
+        public boolean isCanComplete() {
+            return canComplete;
         }
     }
 
@@ -590,13 +827,15 @@ public final class QuestHelpService {
         private final String itemName;
         private final int currentCount;
         private final int requiredCount;
+        private final boolean deliverable;
         private final List<DropMobInfo> dropMobs;
 
-        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, List<DropMobInfo> dropMobs) {
+        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, List<DropMobInfo> dropMobs) {
             this.itemId = itemId;
             this.itemName = itemName;
             this.currentCount = currentCount;
             this.requiredCount = requiredCount;
+            this.deliverable = deliverable;
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
         }
 
@@ -614,6 +853,10 @@ public final class QuestHelpService {
 
         public int getRequiredCount() {
             return requiredCount;
+        }
+
+        public boolean isDeliverable() {
+            return deliverable;
         }
 
         public boolean isCompleted() {
@@ -658,15 +901,17 @@ public final class QuestHelpService {
     public static class QuestDetailInfo {
         private final int questId;
         private final String questName;
+        private final boolean canComplete;
         private final NpcLocationInfo startNpc;
         private final NpcLocationInfo completeNpc;
         private final List<MobObjective> mobObjectives;
         private final List<ItemObjective> itemObjectives;
 
-        public QuestDetailInfo(int questId, String questName, NpcLocationInfo startNpc, NpcLocationInfo completeNpc,
+        public QuestDetailInfo(int questId, String questName, boolean canComplete, NpcLocationInfo startNpc, NpcLocationInfo completeNpc,
                                List<MobObjective> mobObjectives, List<ItemObjective> itemObjectives) {
             this.questId = questId;
             this.questName = questName;
+            this.canComplete = canComplete;
             this.startNpc = startNpc;
             this.completeNpc = completeNpc;
             this.mobObjectives = mobObjectives != null ? mobObjectives : Collections.emptyList();
@@ -679,6 +924,10 @@ public final class QuestHelpService {
 
         public String getQuestName() {
             return questName;
+        }
+
+        public boolean isCanComplete() {
+            return canComplete;
         }
 
         public NpcLocationInfo getStartNpc() {

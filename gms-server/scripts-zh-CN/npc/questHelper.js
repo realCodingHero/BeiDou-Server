@@ -1,16 +1,25 @@
 /**
  * @description 任务辅助 NPC 脚本
- * 提供任务进行状态、杀怪目标地图传送、道具掉落怪物反查传送、起止 NPC 城镇直达
+ * 提供任务状态分类（可完成/进行中）、普通材料一键补齐（带背包空间安全校验）、
+ * 杀怪目标地图传送、道具掉落怪物反查传送、起止 NPC 城镇直达
  */
 
 var status = -1;
+var selectedCategory = 1; // 1: 可交付任务, 2: 进行中任务
 var selectedQuestId = 0;
 var currentDetail = null;
 var selectedItem = null;
 var currentMapList = null;
+var pendingNotice = null;
 
 function start() {
     status = -1;
+    selectedCategory = 1;
+    selectedQuestId = 0;
+    currentDetail = null;
+    selectedItem = null;
+    currentMapList = null;
+    pendingNotice = null;
     action(1, 0, 0);
 }
 
@@ -30,20 +39,16 @@ function action(mode, type, selection) {
         }
 
         if (status === 0) {
-            showQuestList();
+            showMainMenu();
         } else if (status === 1) {
-            if (selection === 999990) {
-                cm.dispose();
-                cm.openNpc(9900001);
-                return;
-            }
-            selectedQuestId = selection;
-            showQuestDetail(selectedQuestId);
+            handleMainMenuSelection(selection);
         } else if (status === 2) {
-            handleDetailSelection(selection);
+            handleQuestListSelection(selection);
         } else if (status === 3) {
-            handleSubSelection(selection);
+            handleDetailSelection(selection);
         } else if (status === 4) {
+            handleSubSelection(selection);
+        } else if (status === 5) {
             handleMapWarp(selection);
         } else {
             cm.dispose();
@@ -55,7 +60,54 @@ function action(mode, type, selection) {
 }
 
 /**
- * 步骤 0：展示玩家所有进行中的任务
+ * 步骤 0：主菜单（可交付任务 vs 进行中任务）
+ */
+function showMainMenu() {
+    var service = cm.getQuestHelp();
+    if (!service) {
+        cm.sendOk("任务辅助服务暂不可用。");
+        return;
+    }
+
+    var completable = service.getCompletableQuestSummaries(cm.getPlayer());
+    var inProgress = service.getInProgressQuestSummaries(cm.getPlayer());
+    var total = completable.size() + inProgress.size();
+
+    if (total === 0) {
+        cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990##b[返回昨日小睡主菜单]#k#l");
+        return;
+    }
+
+    var text = "\t\t\t\t#e#b【 任务辅助 - 任务分类 】#k#n\r\n\r\n";
+    text += "请选择您要查看的任务分类：\r\n\r\n";
+    text += "#L1##e#g【 可交付任务 】#k#n (共 #b" + completable.size() + "#k 个任务已达成全部条件)#l\r\n";
+    text += "#L2##e#d【 进行中任务 】#k#n (共 #b" + inProgress.size() + "#k 个任务尚未达成目标)#l\r\n\r\n";
+    text += "#L999990##b[返回昨日小睡主菜单]#k#l";
+
+    cm.sendSimple(text);
+}
+
+/**
+ * 步骤 1：处理主菜单点击，展示对应分类下的任务列表
+ */
+function handleMainMenuSelection(selection) {
+    if (selection === 999990) {
+        cm.dispose();
+        cm.openNpc(9900001);
+        return;
+    }
+
+    if (selection === 1 || selection === 2) {
+        selectedCategory = selection;
+        showQuestList();
+        return;
+    }
+
+    cm.dispose();
+}
+
+/**
+ * 展示指定分类下的任务列表
  */
 function showQuestList() {
     var service = cm.getQuestHelp();
@@ -64,26 +116,49 @@ function showQuestList() {
         return;
     }
 
-    var quests = service.getStartedQuestSummaries(cm.getPlayer());
+    var quests = (selectedCategory === 1) ?
+            service.getCompletableQuestSummaries(cm.getPlayer()) :
+            service.getInProgressQuestSummaries(cm.getPlayer());
+
+    var categoryTitle = (selectedCategory === 1) ? "可交付任务列表" : "进行中任务列表";
+
     if (!quests || quests.size() === 0) {
-        cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990##b[返回昨日小睡主菜单]#k#l");
+        var emptyMsg = (selectedCategory === 1) ?
+                "当前没有已达成全部条件的可交付任务。\r\n请在【进行中任务】中查看当前目标并完成！" :
+                "当前没有未完成的进行中任务！";
+        cm.sendSimple(emptyMsg + "\r\n\r\n#L999999##b[返回分类菜单]#k#l");
         return;
     }
 
-    var text = "\t\t\t\t#e#b【 任务辅助 - 进行中任务列表 】#k#n\r\n\r\n";
-    text += "请选择您想要查看或快速传送的目标任务：\r\n\r\n";
+    var text = "\t\t\t\t#e#b【 任务辅助 - " + categoryTitle + " 】#k#n\r\n\r\n";
+    text += "请选择您想要查看、补齐材料或快速传送的目标任务：\r\n\r\n";
 
     for (var i = 0; i < quests.size(); i++) {
         var q = quests.get(i);
-        text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k#l\r\n";
+        var tag = q.isCanComplete() ? " #g[可交付]#k" : " #d[进行中]#k";
+        text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k" + tag + "#l\r\n";
     }
-    text += "\r\n#L999990##b[返回昨日小睡主菜单]#k#l";
 
+    text += "\r\n#L999999##b[返回分类菜单]#k#l";
     cm.sendSimple(text);
 }
 
 /**
- * 步骤 1：展示选中任务的具体目标（杀怪、物品、NPC）
+ * 步骤 2：处理从任务列表的选择
+ */
+function handleQuestListSelection(selection) {
+    if (selection === 999999) {
+        status = -1;
+        action(1, 0, 0);
+        return;
+    }
+
+    selectedQuestId = selection;
+    showQuestDetail(selectedQuestId);
+}
+
+/**
+ * 展示选中任务的具体目标（杀怪、物品、NPC）与快捷补齐/传送选项
  */
 function showQuestDetail(questId) {
     var service = cm.getQuestHelp();
@@ -98,12 +173,39 @@ function showQuestDetail(questId) {
         return;
     }
 
-    var text = "#e#b【任务】" + currentDetail.getQuestName() + " (ID: " + currentDetail.getQuestId() + ")#k#n\r\n\r\n";
+    var text = "";
+    if (pendingNotice) {
+        text += pendingNotice + "\r\n\r\n--------------------------------\r\n\r\n";
+        pendingNotice = null;
+    }
+
+    var statusHeader = currentDetail.isCanComplete() ?
+            "#e#g【状态：已集齐全部条件，可直接前往交付！】#k#n" :
+            "#e#d【状态：进行中，需达成以下目标】#k#n";
+
+    text += "#e#b【任务】" + currentDetail.getQuestName() + " (ID: " + currentDetail.getQuestId() + ")#k#n\r\n";
+    text += statusHeader + "\r\n\r\n";
 
     var mobObjs = currentDetail.getMobObjectives();
     var itemObjs = currentDetail.getItemObjectives();
     var startNpc = currentDetail.getStartNpc();
     var compNpc = currentDetail.getCompleteNpc();
+
+    // 检查是否有可补齐的普通材料
+    var hasDeliverableIncomplete = false;
+    if (itemObjs && itemObjs.size() > 0) {
+        for (var i = 0; i < itemObjs.size(); i++) {
+            var item = itemObjs.get(i);
+            if (item.isDeliverable() && !item.isCompleted()) {
+                hasDeliverableIncomplete = true;
+                break;
+            }
+        }
+    }
+
+    if (hasDeliverableIncomplete) {
+        text += "#L10000##e#g【 ★ 一键补齐本任务全部普通怪物材料 】#k#n#l\r\n\r\n";
+    }
 
     var hasContent = false;
 
@@ -126,7 +228,16 @@ function showQuestDetail(questId) {
         for (var i = 0; i < itemObjs.size(); i++) {
             var item = itemObjs.get(i);
             var statusTag = item.isCompleted() ? " #g[已达成]#k" : " #r[未完成]#k";
-            text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
+            var diff = item.getRequiredCount() - item.getCurrentCount();
+
+            if (item.isCompleted()) {
+                text += " 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + "\r\n";
+            } else if (item.isDeliverable()) {
+                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
+                text += "#L" + (250000 + i) + "#   #g└─ [一键补齐该材料 (缺 " + diff + " 个)]#k#l\r\n";
+            } else {
+                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[查看掉落/传送]#k #r(特殊/剧情道具需手动获取)#k#l\r\n";
+            }
         }
         text += "\r\n";
     }
@@ -155,12 +266,34 @@ function showQuestDetail(questId) {
 }
 
 /**
- * 步骤 2：处理从任务目标页面的点击
+ * 步骤 3：处理从任务目标页面的点击
  */
 function handleDetailSelection(selection) {
     if (selection === 999999) {
-        status = -1;
-        action(1, 0, 0);
+        status = 0;
+        action(1, 0, selectedCategory);
+        return;
+    }
+
+    // 一键补齐当前任务全部普通怪物材料
+    if (selection === 10000) {
+        var service = cm.getQuestHelp();
+        var res = service.deliverAllRegularMaterials(cm.getPlayer(), selectedQuestId);
+        pendingNotice = res.isSuccess() ? "#g" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
+        status = 1;
+        action(1, 0, selectedQuestId);
+        return;
+    }
+
+    // 单项补齐指定普通怪物材料
+    if (selection >= 250000 && selection < 300000) {
+        var index = selection - 250000;
+        var item = currentDetail.getItemObjectives().get(index);
+        var service = cm.getQuestHelp();
+        var res = service.deliverQuestMaterial(cm.getPlayer(), selectedQuestId, item.getItemId());
+        pendingNotice = res.isSuccess() ? "#g" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
+        status = 1;
+        action(1, 0, selectedQuestId);
         return;
     }
 
@@ -186,13 +319,13 @@ function handleDetailSelection(selection) {
     }
 
     // 道具收集 -> 显示掉落怪物
-    if (selection >= 200000 && selection < 300000) {
+    if (selection >= 200000 && selection < 250000) {
         var index = selection - 200000;
         selectedItem = currentDetail.getItemObjectives().get(index);
         var dropMobs = selectedItem.getDropMobs();
 
         if (!dropMobs || dropMobs.size() === 0) {
-            cm.sendOk("道具 【#b" + selectedItem.getItemName() + "#k】 暂无野外怪物直接掉落数据（可能为任务剧情专有道具或商店购买）。");
+            cm.sendOk("道具 【#b" + selectedItem.getItemName() + "#k】 暂无野外怪物直接掉落数据（可能为任务剧情专有道具、箱子掉落或商店购买）。");
             return;
         }
 
@@ -260,11 +393,11 @@ function handleDetailSelection(selection) {
 }
 
 /**
- * 步骤 3：处理地图传送或掉落怪物详情点击
+ * 步骤 4：处理地图传送或掉落怪物详情点击
  */
 function handleSubSelection(selection) {
     if (selection === 999998) {
-        status = 0;
+        status = 1;
         action(1, 0, selectedQuestId);
         return;
     }
@@ -306,12 +439,12 @@ function handleSubSelection(selection) {
 }
 
 /**
- * 步骤 4：处理从掉落怪物地图选择时的传送
+ * 步骤 5：处理从掉落怪物地图选择时的传送
  */
 function handleMapWarp(selection) {
     if (selection === 999997) {
         // 返回掉落怪物列表
-        status = 1;
+        status = 2;
         action(1, 0, 200000);
         return;
     }
