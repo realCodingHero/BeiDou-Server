@@ -79,7 +79,7 @@ function action(mode, type, selection) {
             } else if (jobid % 100 != 0) {
                 where += "#L" + (jobid + 1) + "#我要进行#r" + (jobid % 10 + 3) + "#k转#l \r\n";
             }
-            where += "\r\n#L9999# ⬅️ 返回昨日小睡主菜单 #l";
+            where += "\r\n#L9999##b[返回昨日小睡主菜单]#k#l";
             cm.sendSimple(where);
         } else if (status == 2) {
             if (selection == 9999) {

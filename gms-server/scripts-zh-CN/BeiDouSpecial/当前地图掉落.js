@@ -55,7 +55,7 @@ function action(mode, type, selection) {
         text += " \r\n\r\n";
 		text += "#L1#当前地图爆率查询#l\r\n";
 		text += "#L2#系统物品爆率查询#l\r\n\r\n";
-		text += "#L9999# ⬅️ 返回昨日小睡主菜单 #l\r\n";
+		text += "#L9999##b[返回昨日小睡主菜单]#k#l\r\n";
         cm.sendSimple(text);
     } else if (status === 1) {
         doSelect(selection);

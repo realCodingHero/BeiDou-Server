@@ -22,6 +22,7 @@ package org.gms.server.quest;
 import org.gms.client.Character;
 import org.gms.client.QuestStatus;
 import org.gms.client.inventory.InventoryType;
+import org.gms.constants.id.MobId;
 import org.gms.constants.inventory.ItemConstants;
 import org.gms.provider.Data;
 import org.gms.provider.DataDirectoryEntry;
@@ -47,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -177,6 +179,42 @@ public final class QuestHelpService {
     public List<MapLocation> getMapsForMob(int mobId) {
         ensureInitialized();
         Set<Integer> mapIds = mobToMaps.get(mobId);
+        if (mapIds == null || mapIds.isEmpty()) {
+            Set<Integer> combined = new HashSet<>();
+            // 1. 常见任务别名怪物映射 (如绿蘑菇、僵尸蘑菇、幽灵树桩等)
+            if (mobId == MobId.GREEN_MUSHROOM_QUEST) {
+                Set<Integer> m1 = mobToMaps.get(MobId.GREEN_MUSHROOM);
+                if (m1 != null) combined.addAll(m1);
+                Set<Integer> m2 = mobToMaps.get(MobId.DEJECTED_GREEN_MUSHROOM);
+                if (m2 != null) combined.addAll(m2);
+            } else if (mobId == MobId.ZOMBIE_MUSHROOM_QUEST) {
+                Set<Integer> m1 = mobToMaps.get(MobId.ZOMBIE_MUSHROOM);
+                if (m1 != null) combined.addAll(m1);
+                Set<Integer> m2 = mobToMaps.get(MobId.ANNOYED_ZOMBIE_MUSHROOM);
+                if (m2 != null) combined.addAll(m2);
+            } else if (mobId == MobId.GHOST_STUMP_QUEST) {
+                Set<Integer> m1 = mobToMaps.get(MobId.GHOST_STUMP);
+                if (m1 != null) combined.addAll(m1);
+                Set<Integer> m2 = mobToMaps.get(MobId.SMIRKING_GHOST_STUMP);
+                if (m2 != null) combined.addAll(m2);
+            }
+
+            // 2. 名称回退机制：若为特殊任务变种怪，在已索引的野外怪中查找同名怪物的地图
+            if (combined.isEmpty()) {
+                String targetName = getMobName(mobId);
+                if (targetName != null && !targetName.isBlank() && !targetName.startsWith("怪物 ") && !"MISSINGNO".equals(targetName)) {
+                    for (Map.Entry<Integer, Set<Integer>> entry : mobToMaps.entrySet()) {
+                        if (entry.getKey() != mobId && targetName.equals(getMobName(entry.getKey()))) {
+                            combined.addAll(entry.getValue());
+                        }
+                    }
+                }
+            }
+
+            if (!combined.isEmpty()) {
+                mapIds = combined;
+            }
+        }
         if (mapIds == null || mapIds.isEmpty()) {
             return Collections.emptyList();
         }

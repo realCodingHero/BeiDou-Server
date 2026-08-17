@@ -66,18 +66,18 @@ function showQuestList() {
 
     var quests = service.getStartedQuestSummaries(cm.getPlayer());
     if (!quests || quests.size() === 0) {
-        cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990# ⬅️ 返回昨日小睡主菜单 #l");
+        cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990##b[返回昨日小睡主菜单]#k#l");
         return;
     }
 
-    var text = "\t\t\t\t#e#b📜 任务辅助 - 进行中任务列表#k#n\r\n\r\n";
+    var text = "\t\t\t\t#e#b【 任务辅助 - 进行中任务列表 】#k#n\r\n\r\n";
     text += "请选择您想要查看或快速传送的目标任务：\r\n\r\n";
 
     for (var i = 0; i < quests.size(); i++) {
         var q = quests.get(i);
         text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k#l\r\n";
     }
-    text += "\r\n#L999990# ⬅️ 返回昨日小睡主菜单 #l";
+    text += "\r\n#L999990##b[返回昨日小睡主菜单]#k#l";
 
     cm.sendSimple(text);
 }
@@ -110,7 +110,7 @@ function showQuestDetail(questId) {
     // 1. 击杀目标
     if (mobObjs && mobObjs.size() > 0) {
         hasContent = true;
-        text += "#e🗡️ 击杀怪物目标：#n\r\n";
+        text += "#e【 击杀怪物目标 】#n\r\n";
         for (var i = 0; i < mobObjs.size(); i++) {
             var mob = mobObjs.get(i);
             var statusTag = mob.isCompleted() ? " #g[已达成]#k" : " #r[未完成]#k";
@@ -122,7 +122,7 @@ function showQuestDetail(questId) {
     // 2. 收集道具目标
     if (itemObjs && itemObjs.size() > 0) {
         hasContent = true;
-        text += "#e📦 收集道具目标：#n\r\n";
+        text += "#e【 收集道具目标 】#n\r\n";
         for (var i = 0; i < itemObjs.size(); i++) {
             var item = itemObjs.get(i);
             var statusTag = item.isCompleted() ? " #g[已达成]#k" : " #r[未完成]#k";
@@ -134,7 +134,7 @@ function showQuestDetail(questId) {
     // 3. NPC 导航
     if (startNpc || compNpc) {
         hasContent = true;
-        text += "#e📍 NPC 导航传送：#n\r\n";
+        text += "#e【 NPC 导航传送 】#n\r\n";
         if (startNpc) {
             var startMapText = (startNpc.getMaps() && startNpc.getMaps().size() > 0) ? startNpc.getMaps().get(0).getDisplayName() : "未知地图";
             text += "#L300001# 接取NPC：#b" + startNpc.getNpcName() + "#k (" + startMapText + ") -> #d[传送直达]#k#l\r\n";
@@ -150,7 +150,7 @@ function showQuestDetail(questId) {
         text += "该任务为纯对话/探索类任务，无需特定击杀或物品收集。\r\n\r\n";
     }
 
-    text += "#L999999# ⬅️ 返回任务列表 #l";
+    text += "#L999999##b[返回任务列表]#k#l";
     cm.sendSimple(text);
 }
 
@@ -178,9 +178,9 @@ function handleDetailSelection(selection) {
         var text = "#e#b怪物 【" + mob.getMobName() + "】 出现在以下地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# 📍 " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
         }
-        text += "\r\n#L999998# ⬅️ 返回任务详情 #l";
+        text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
         return;
     }
@@ -201,7 +201,7 @@ function handleDetailSelection(selection) {
             var dropMob = dropMobs.get(i);
             text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
         }
-        text += "\r\n#L999998# ⬅️ 返回任务详情 #l";
+        text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
         return;
     }
@@ -224,9 +224,9 @@ function handleDetailSelection(selection) {
         var text = "#e#b接取 NPC 【" + startNpc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# 📍 " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
         }
-        text += "\r\n#L999998# ⬅️ 返回任务详情 #l";
+        text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
         return;
     }
@@ -249,9 +249,9 @@ function handleDetailSelection(selection) {
         var text = "#e#b交付 NPC 【" + compNpc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# 📍 " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
         }
-        text += "\r\n#L999998# ⬅️ 返回任务详情 #l";
+        text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
         return;
     }
@@ -295,9 +295,9 @@ function handleSubSelection(selection) {
         var text = "#e#b怪物 【" + dropMob.getMobName() + "】 (掉落: " + selectedItem.getItemName() + ") 分布地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# 📍 " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
         }
-        text += "\r\n#L999997# ⬅️ 返回掉落怪物列表 #l";
+        text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
         cm.sendSimple(text);
         return;
     }
