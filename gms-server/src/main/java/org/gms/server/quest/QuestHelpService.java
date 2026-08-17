@@ -302,7 +302,7 @@ public final class QuestHelpService {
         List<DropMobInfo> dropMobs = new ArrayList<>();
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(
-                     "SELECT dropperid, chance FROM drop_data WHERE itemid = ? AND dropperid > 0 ORDER BY chance DESC LIMIT 30")) {
+                     "SELECT dropperid, chance FROM drop_data WHERE itemid = ? AND dropperid > 0 ORDER BY chance DESC LIMIT 60")) {
             ps.setInt(1, itemId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -334,13 +334,18 @@ public final class QuestHelpService {
     }
 
     /**
-     * 判断道具是否为单纯由普通怪物掉落的普通杂物材料（可供任务辅助快捷补齐）
-     * 严格排除：装备、消耗品、任务专属(403)、不可出售/不可交易/唯一道具、仅Boss掉落/箱子掉落道具
+     * 判断道具是否为单纯由普通怪物掉落的普通杂物/消耗品材料（可供任务辅助快捷补齐）
+     * 允许：普通 ETC 杂物材料、普通 USE 消耗品道具
+     * 严格排除：装备、商城道具、任务专属(403xxxx/quest标记)、不可出售/不可交易/唯一道具、仅Boss掉落/仅箱子掉落道具
      */
     public boolean isRegularMonsterMaterial(int itemId) {
         return regularMaterialCache.computeIfAbsent(itemId, id -> {
-            // 1. 类别必须为普通 ETC 杂物 (4000000 ~ 4029999)
-            if (id < 4000000 || id >= 4030000) {
+            // 1. 类别必须为普通 ETC 杂物 或 普通 USE 消耗品（排除装备 1xxxxxx、商城 5xxxxxx、专属任务道具 403xxxx）
+            InventoryType invType = ItemConstants.getInventoryType(id);
+            if (invType != InventoryType.ETC && invType != InventoryType.USE && invType != InventoryType.SETUP) {
+                return false;
+            }
+            if (id >= 4030000 && id < 4040000) {
                 return false;
             }
 
@@ -353,8 +358,9 @@ public final class QuestHelpService {
             Data itemData = ii.getItemData(id);
             if (itemData != null) {
                 int notSale = DataTool.getIntConvert("info/notSale", itemData, 0);
-                int price = DataTool.getIntConvert("info/price", itemData, -1);
-                if (notSale == 1 || price <= 0) {
+                int tradeBlock = DataTool.getIntConvert("info/tradeBlock", itemData, 0);
+                int only = DataTool.getIntConvert("info/only", itemData, 0);
+                if (notSale == 1 || tradeBlock == 1 || only == 1) {
                     return false;
                 }
             }
@@ -529,7 +535,8 @@ public final class QuestHelpService {
 
         // 严格校验背包空间
         if (!org.gms.client.inventory.manipulator.InventoryManipulator.checkSpace(player.getClient(), itemId, neededCount, "")) {
-            return new DeliveryResult(false, "您的【其它】背包空间不足，请清理出至少 1 个空闲格子后再试！", 0);
+            String invName = (iType != null && iType.getName() != null) ? iType.getName() : "对应";
+            return new DeliveryResult(false, "您的【" + invName + "】背包空间不足，请清理出至少 1 个空闲格子后再试！", 0);
         }
 
         boolean added = org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) neededCount, "任务辅助补齐普通材料", -1);
@@ -596,17 +603,23 @@ public final class QuestHelpService {
             return new DeliveryResult(true, msg, 0);
         }
 
-        // 渐进式多物品背包空间模拟校验，确保多件物品不会溢出
-        int simulatedUsedSlots = 0;
+        // 渐进式多物品背包空间模拟校验，按各个背包分类分别跟踪所需空闲槽位
+        int[] simulatedUsedSlots = new int[6];
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
-            int result = org.gms.client.inventory.manipulator.InventoryManipulator.checkSpaceProgressively(
-                    player.getClient(), itemId, qty, "", simulatedUsedSlots, false);
-            if (result < 0) {
-                return new DeliveryResult(false, "您的【其它】背包空间不足以容纳全部补齐材料，请清理出更多空闲格子后再试！", 0);
+            InventoryType iType = ItemConstants.getInventoryType(itemId);
+            int typeIdx = (iType != null) ? iType.getType() : 0;
+            if (typeIdx < 0 || typeIdx >= simulatedUsedSlots.length) {
+                typeIdx = 0;
             }
-            simulatedUsedSlots = result;
+            int result = org.gms.client.inventory.manipulator.InventoryManipulator.checkSpaceProgressively(
+                    player.getClient(), itemId, qty, "", simulatedUsedSlots[typeIdx], false);
+            if (result < 0) {
+                String invName = (iType != null && iType.getName() != null) ? iType.getName() : "对应";
+                return new DeliveryResult(false, "您的【" + invName + "】背包空间不足以容纳全部补齐材料，请清理出更多空闲格子后再试！", 0);
+            }
+            simulatedUsedSlots[typeIdx] = result;
         }
 
         // 安全发放全部材料
