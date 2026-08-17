@@ -108,14 +108,12 @@ public final class QuestHelpService {
 
     private void scanDir(DataProvider mapSource, DataEntity entity) {
         if (entity instanceof DataDirectoryEntry dir) {
-            for (DataFileEntry fileEntry : dir.getFiles()) {
-                scanFile(mapSource, fileEntry);
-            }
-            for (DataDirectoryEntry subDir : dir.getSubdirectories()) {
-                if (subDir.getName().startsWith("Map")) {
+            dir.getFiles().parallelStream().forEach(fileEntry -> scanFile(mapSource, fileEntry));
+            dir.getSubdirectories().parallelStream().forEach(subDir -> {
+                if (subDir.getName().startsWith("Map") || subDir.getName().startsWith("map")) {
                     scanDir(mapSource, subDir);
                 }
-            }
+            });
         }
     }
 
@@ -209,7 +207,7 @@ public final class QuestHelpService {
         List<DropMobInfo> dropMobs = new ArrayList<>();
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(
-                     "SELECT dropperid, chance FROM drop_data WHERE itemid = ? ORDER BY chance DESC LIMIT 30")) {
+                     "SELECT dropperid, chance FROM drop_data WHERE itemid = ? AND dropperid > 0 ORDER BY chance DESC LIMIT 30")) {
             ps.setInt(1, itemId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
