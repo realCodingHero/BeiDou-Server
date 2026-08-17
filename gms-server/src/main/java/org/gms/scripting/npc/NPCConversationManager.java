@@ -427,7 +427,15 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
     }
 
     public void openEquipShop(int categoryId) {
-        boolean success = org.gms.server.shop.EquipShopService.getInstance().openShop(c, categoryId);
+        openEquipShop(categoryId, 0, 0, 0);
+    }
+
+    public void openEquipShop(int categoryId, int minLevel, int maxLevel) {
+        openEquipShop(categoryId, 0, minLevel, maxLevel);
+    }
+
+    public void openEquipShop(int categoryId, int subType, int minLevel, int maxLevel) {
+        boolean success = org.gms.server.shop.EquipShopService.getInstance().openShop(c, categoryId, subType, minLevel, maxLevel);
         if (!success) {
             sendOk("该分类暂无适合您当前职业的装备。");
         }
