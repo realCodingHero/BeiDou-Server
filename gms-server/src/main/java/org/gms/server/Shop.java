@@ -70,13 +70,13 @@ public class Shop {
         }
     }
 
-    private Shop(int id, int npcId) {
+    public Shop(int id, int npcId) {
         this.id = id;
         this.npcId = npcId;
         items = new ArrayList<>();
     }
 
-    private void addItem(ShopItem item) {
+    public void addItem(ShopItem item) {
         items.add(item);
     }
 
