@@ -102,8 +102,9 @@ function action(mode, type, selection) {
         }
     } else if (status === 2) {
         if (selection === 9999) {
-            cm.dispose();
-            cm.openNpc("装备商店");
+            status = -1;
+            selectedCategory = -1;
+            action(1, 0, 0);
             return;
         }
 
