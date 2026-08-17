@@ -410,20 +410,29 @@ public class MapFactory {
         return builder.toString();
     }
 
+    private static final java.util.Map<Integer, String> placeNameCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<Integer, String> streetNameCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     public static String loadPlaceName(int mapid) {
-        try {
-            return DataTool.getString("mapName", nameData.getChildByPath(getMapStringName(mapid)), "");
-        } catch (Exception e) {
-            return "";
-        }
+        return placeNameCache.computeIfAbsent(mapid, id -> {
+            try {
+                Data child = nameData.getChildByPath(getMapStringName(id));
+                return child != null ? DataTool.getString("mapName", child, "") : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
     }
 
     public static String loadStreetName(int mapid) {
-        try {
-            return DataTool.getString("streetName", nameData.getChildByPath(getMapStringName(mapid)), "");
-        } catch (Exception e) {
-            return "";
-        }
+        return streetNameCache.computeIfAbsent(mapid, id -> {
+            try {
+                Data child = nameData.getChildByPath(getMapStringName(id));
+                return child != null ? DataTool.getString("streetName", child, "") : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
     }
 
     public static String getMapIdByLifeId(int lifeId) {

@@ -64,6 +64,15 @@ public final class QuestHelpService {
 
     private final Map<Integer, Set<Integer>> mobToMaps = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> npcToMaps = new ConcurrentHashMap<>();
+    private final Map<String, Set<Integer>> nameToMobIds = new ConcurrentHashMap<>();
+    private final Map<Integer, String> mobNameCache = new ConcurrentHashMap<>();
+    private final Map<Integer, String> npcNameCache = new ConcurrentHashMap<>();
+    private final Map<Integer, String> itemNameCache = new ConcurrentHashMap<>();
+    private final Map<Integer, MapLocation> mapLocationCache = new ConcurrentHashMap<>();
+    private final Map<Integer, List<MapLocation>> mobMapsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, List<MapLocation>> npcMapsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
+
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     public static QuestHelpService getInstance() {
@@ -102,6 +111,14 @@ public final class QuestHelpService {
             }
         } catch (SQLException e) {
             log.warn("Failed to load plife table for quest help service", e);
+        }
+
+        // 构建怪物名称倒排索引，用于极速 O(1) 反查同名任务变种怪的野外地图
+        for (int mobId : mobToMaps.keySet()) {
+            String name = getMobName(mobId);
+            if (name != null && !name.isBlank() && !name.startsWith("怪物 ") && !"MISSINGNO".equals(name)) {
+                nameToMobIds.computeIfAbsent(name, k -> ConcurrentHashMap.newKeySet()).add(mobId);
+            }
         }
 
         log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs",
@@ -176,8 +193,19 @@ public final class QuestHelpService {
         }
     }
 
+    public MapLocation getMapLocation(int mapId) {
+        return mapLocationCache.computeIfAbsent(mapId, id ->
+                new MapLocation(id, MapFactory.loadPlaceName(id), MapFactory.loadStreetName(id))
+        );
+    }
+
     public List<MapLocation> getMapsForMob(int mobId) {
         ensureInitialized();
+        List<MapLocation> cached = mobMapsCache.get(mobId);
+        if (cached != null) {
+            return cached;
+        }
+
         Set<Integer> mapIds = mobToMaps.get(mobId);
         if (mapIds == null || mapIds.isEmpty()) {
             Set<Integer> combined = new HashSet<>();
@@ -199,13 +227,19 @@ public final class QuestHelpService {
                 if (m2 != null) combined.addAll(m2);
             }
 
-            // 2. 名称回退机制：若为特殊任务变种怪，在已索引的野外怪中查找同名怪物的地图
+            // 2. 名称回退机制：若为特殊任务变种怪，在已索引的野外怪中查找同名怪物的地图 (O(1) 倒排索引查找)
             if (combined.isEmpty()) {
                 String targetName = getMobName(mobId);
                 if (targetName != null && !targetName.isBlank() && !targetName.startsWith("怪物 ") && !"MISSINGNO".equals(targetName)) {
-                    for (Map.Entry<Integer, Set<Integer>> entry : mobToMaps.entrySet()) {
-                        if (entry.getKey() != mobId && targetName.equals(getMobName(entry.getKey()))) {
-                            combined.addAll(entry.getValue());
+                    Set<Integer> sameNameMobIds = nameToMobIds.get(targetName);
+                    if (sameNameMobIds != null) {
+                        for (int otherMobId : sameNameMobIds) {
+                            if (otherMobId != mobId) {
+                                Set<Integer> otherMaps = mobToMaps.get(otherMobId);
+                                if (otherMaps != null) {
+                                    combined.addAll(otherMaps);
+                                }
+                            }
                         }
                     }
                 }
@@ -215,33 +249,53 @@ public final class QuestHelpService {
                 mapIds = combined;
             }
         }
+
         if (mapIds == null || mapIds.isEmpty()) {
-            return Collections.emptyList();
+            List<MapLocation> empty = Collections.emptyList();
+            mobMapsCache.put(mobId, empty);
+            return empty;
         }
+
         List<MapLocation> result = new ArrayList<>(mapIds.size());
         for (int mapId : mapIds) {
-            result.add(new MapLocation(mapId, MapFactory.loadPlaceName(mapId), MapFactory.loadStreetName(mapId)));
+            result.add(getMapLocation(mapId));
         }
         result.sort(Comparator.comparingInt(MapLocation::getMapId));
-        return Collections.unmodifiableList(result);
+        List<MapLocation> unmod = Collections.unmodifiableList(result);
+        mobMapsCache.put(mobId, unmod);
+        return unmod;
     }
 
     public List<MapLocation> getMapsForNpc(int npcId) {
         ensureInitialized();
+        List<MapLocation> cached = npcMapsCache.get(npcId);
+        if (cached != null) {
+            return cached;
+        }
+
         Set<Integer> mapIds = npcToMaps.get(npcId);
         if (mapIds == null || mapIds.isEmpty()) {
-            return Collections.emptyList();
+            List<MapLocation> empty = Collections.emptyList();
+            npcMapsCache.put(npcId, empty);
+            return empty;
         }
+
         List<MapLocation> result = new ArrayList<>(mapIds.size());
         for (int mapId : mapIds) {
-            result.add(new MapLocation(mapId, MapFactory.loadPlaceName(mapId), MapFactory.loadStreetName(mapId)));
+            result.add(getMapLocation(mapId));
         }
         result.sort(Comparator.comparingInt(MapLocation::getMapId));
-        return Collections.unmodifiableList(result);
+        List<MapLocation> unmod = Collections.unmodifiableList(result);
+        npcMapsCache.put(npcId, unmod);
+        return unmod;
     }
 
     public List<DropMobInfo> getDropMobsForItem(int itemId) {
         ensureInitialized();
+        return itemDropMobsCache.computeIfAbsent(itemId, this::loadDropMobsForItem);
+    }
+
+    private List<DropMobInfo> loadDropMobsForItem(int itemId) {
         List<DropMobInfo> dropMobs = new ArrayList<>();
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(
@@ -375,19 +429,25 @@ public final class QuestHelpService {
         }
     }
 
-    private static String getMobName(int mobId) {
-        String name = MonsterInformationProvider.getInstance().getMobNameFromId(mobId);
-        return (name == null || name.isBlank()) ? "怪物 " + mobId : name;
+    private String getMobName(int mobId) {
+        return mobNameCache.computeIfAbsent(mobId, id -> {
+            String name = MonsterInformationProvider.getInstance().getMobNameFromId(id);
+            return (name == null || name.isBlank()) ? "怪物 " + id : name;
+        });
     }
 
-    private static String getNPCName(int npcId) {
-        String name = LifeFactory.getNPCName(npcId);
-        return (name == null || name.isBlank() || "MISSINGNO".equals(name)) ? "NPC " + npcId : name;
+    private String getNPCName(int npcId) {
+        return npcNameCache.computeIfAbsent(npcId, id -> {
+            String name = LifeFactory.getNPCName(id);
+            return (name == null || name.isBlank() || "MISSINGNO".equals(name)) ? "NPC " + id : name;
+        });
     }
 
-    private static String getItemName(int itemId) {
-        String name = ItemInformationProvider.getInstance().getName(itemId);
-        return (name == null || name.isBlank()) ? "道具 " + itemId : name;
+    private String getItemName(int itemId) {
+        return itemNameCache.computeIfAbsent(itemId, id -> {
+            String name = ItemInformationProvider.getInstance().getName(id);
+            return (name == null || name.isBlank()) ? "道具 " + id : name;
+        });
     }
 
     // Models
