@@ -54,7 +54,8 @@ function action(mode, type, selection) {
         text += ""+ui+"当前金币：" + cm.getPlayer().getMeso() + "\r\n";
         text += " \r\n\r\n";
 		text += "#L1#当前地图爆率查询#l\r\n";
-		text += "#L2#系统物品爆率查询#l\r\n";
+		text += "#L2#系统物品爆率查询#l\r\n\r\n";
+		text += "#L9999# ⬅️ 返回昨日小睡主菜单 #l\r\n";
         cm.sendSimple(text);
     } else if (status === 1) {
         doSelect(selection);
@@ -72,7 +73,10 @@ function doSelect(selection) {
         case 2:
             openNpc("当前地图掉落_物品查询");
             break;
-        
+        case 9999:
+            cm.dispose();
+            cm.openNpc(9900001);
+            break;
 
 
         default:

@@ -21,7 +21,7 @@ function action(mode, type, selection) {
     if (status === 0) {
         cm.sendNext("当你想要再次重生时，来找我吧。你目前总共有 #r" + cm.getChar().getReborns() + " #krebirths。");
     } else if (status === 1) {
-        cm.sendSimple("你今天想让我做什么呢：\r\n\r\n#L0##b我想转生！#l\r\n#L1##b现在什么都不想做...#k#l");
+        cm.sendSimple("你今天想让我做什么呢：\r\n\r\n#L0##b我想转生！#l\r\n#L1##b⬅️ 返回昨日小睡主菜单#k#l");
     } else if (status === 2) {
         if (selection === 0) {
             if (cm.getChar().getLevel() === cm.getChar().getMaxClassLevel()) {
@@ -31,8 +31,9 @@ function action(mode, type, selection) {
                 cm.dispose();
             }
         } else if (selection === 1) {
-            cm.sendOk("See you soon!")
             cm.dispose();
+            cm.openNpc(9900001);
+            return;
         }
     } else if (status === 3) {
         // 0 => beginner, 1000 => noblesse, 2000 => legend

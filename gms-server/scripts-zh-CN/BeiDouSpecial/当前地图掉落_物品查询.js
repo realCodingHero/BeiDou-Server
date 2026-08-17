@@ -56,7 +56,8 @@ function levelStart() {
     text += "#L8##r消耗品#k#l\r\n";
     text += "#L9##r卷轴/强化#k#l\r\n";
     text += "#L10##r其他物品#k#l\r\n";
-    text += "#L11##r职业技能书#k#l\r\n";
+    text += "#L11##r职业技能书#k#l\r\n\r\n";
+    text += "#L9999# ⬅️ 返回爆率查询主菜单 #l\r\n";
     text += "#L12##r关闭#k#l";
     
     cm.sendNextSelectLevel('handleMainSelection', text, 2);
@@ -72,6 +73,9 @@ function levelhandleMainSelection(selection) {
         loadCategoryItems(sel);
     } else if (sel == 12) {
         cm.dispose();
+    } else if (sel == 9999) {
+        cm.dispose();
+        cm.openNpc(9900001, "当前地图掉落");
     } else {
         levelStart();
     }

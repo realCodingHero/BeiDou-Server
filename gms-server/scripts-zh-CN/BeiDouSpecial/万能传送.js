@@ -120,12 +120,18 @@ function start()
  * @description 如果是sendSelectLevel，那么会根据玩家的选项自动路由到对应的level+selection方法
  */
 function levelStart() {
-    let text = "尊贵的GM大人，您想去哪里呢？\r\n";
+    let text = "您想去哪里呢？请选择传送分类：\r\n";
     text += "#L0#BOSS地图#l\r\n";
     text += "#L1#练级地图#l\r\n";
     text += "#L2#城镇地图#l\r\n";
-    text += "#L3#活动跳跳坐牢地图#l\r\n";
+    text += "#L3#活动跳跳坐牢地图#l\r\n\r\n";
+    text += "#L9999# ⬅️ 返回昨日小睡主菜单 #l\r\n";
     cm.sendSelectLevel(text);
+}
+
+function level9999() {
+    cm.dispose();
+    cm.openNpc(9900001);
 }
 
 function level0() {
@@ -133,6 +139,7 @@ function level0() {
     for (let i = 0; i < bossmaps.length; i++) {  
        text += "#L" + i + "#" + bossmaps[i][2] + "#l\r\n";
     }	
+    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
 	cm.sendNextSelectLevel("Boss", text);
 }
 
@@ -141,6 +148,7 @@ function level1() {
     for (let i = 0; i < monstermaps.length; i++) {  
        text += "#L" + i + "#" + monstermaps[i][2] + "#l\r\n";
     }	
+    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
 	cm.sendNextSelectLevel("LevelUp", text);
 }
 
@@ -149,6 +157,7 @@ function level2() {
     for (let i = 0; i < townmaps.length; i++) {  
        text += "#L" + i + "#" + townmaps[i][2] + "#l\r\n";
     }	
+    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
 	cm.sendNextSelectLevel("Town", text);
 }
 
@@ -157,11 +166,16 @@ function level3() {
     for (let i = 0; i < fubenmaps.length; i++) {  
        text += "#L" + i + "#" + fubenmaps[i][2] + "#l\r\n";
     }	
+    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
 	cm.sendNextSelectLevel("Fuben", text);
 }
 
 //----------------------------------------------------------------------------------
 function levelBoss(selection) {
+    if (selection == 9999) {
+        levelStart();
+        return;
+    }
 	cm.gainMeso(-bossmaps[selection][1]);
 	cm.getPlayer().saveLocationOnWarp();
 	cm.warp(bossmaps[selection][0]);
@@ -169,6 +183,10 @@ function levelBoss(selection) {
 }
 
 function levelLevelUp(selection) {
+    if (selection == 9999) {
+        levelStart();
+        return;
+    }
 	cm.gainMeso(-monstermaps[selection][1]);
 	cm.getPlayer().saveLocationOnWarp();
 	cm.warp(monstermaps[selection][0]);
@@ -176,6 +194,10 @@ function levelLevelUp(selection) {
 }
 
 function levelTown(selection) {
+    if (selection == 9999) {
+        levelStart();
+        return;
+    }
 	cm.gainMeso(-townmaps[selection][1]);
 	cm.getPlayer().saveLocationOnWarp();
 	cm.warp(townmaps[selection][0]);
@@ -183,6 +205,10 @@ function levelTown(selection) {
 }
 
 function levelFuben(selection) {
+    if (selection == 9999) {
+        levelStart();
+        return;
+    }
 	cm.gainMeso(-fubenmaps[selection][1]);
 	cm.getPlayer().saveLocationOnWarp();
 	cm.warp(fubenmaps[selection][0]);

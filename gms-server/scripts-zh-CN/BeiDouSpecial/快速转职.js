@@ -72,12 +72,21 @@ function action(mode, type, selection) {
                     case 21:
                         where += "#L2110#战神(二转)#l \r\n";
                         break;
+                    default:
+                        where += "你还没有转职！";
+                        break;
                 }
             } else if (jobid % 100 != 0) {
                 where += "#L" + (jobid + 1) + "#我要进行#r" + (jobid % 10 + 3) + "#k转#l \r\n";
             }
+            where += "\r\n#L9999# ⬅️ 返回昨日小睡主菜单 #l";
             cm.sendSimple(where);
         } else if (status == 2) {
+            if (selection == 9999) {
+                cm.dispose();
+                cm.openNpc(9900001);
+                return;
+            }
             var changeto = selection;
             var jobid = cm.getJobId();
             if (jobid % 1000 == 0) {
