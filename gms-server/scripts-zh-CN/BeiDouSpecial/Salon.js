@@ -950,9 +950,15 @@ function action(mode, type, selection) {
         text += "#L20#第一批脸型#l\t#L21#第二批脸型（未开放）#l\r\n";
         text += "#L30#发色#l\r\n";
         text += "#L40#脸色#l\r\n";
-        text += "#L50#肤色#l\r\n";
+        text += "#L50#肤色#l\r\n\r\n";
+        text += "#L9999# ⬅️ 返回昨日小睡主菜单 #l\r\n";
         cm.sendSimple(text);
     } else if (status === 1) {
+        if (selection === 9999) {
+            cm.dispose();
+            cm.openNpc(9900001);
+            return;
+        }
         if (selection >= 10 && selection < 20) {
             beauty = 1;
             var currentColor = cm.getPlayer().getHair() % 10;

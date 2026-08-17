@@ -55,7 +55,7 @@ function showSkillList() {
         text += "#L1##b#s2101002# #q2101002##k (学习并绑定#e+#n键)#l\r\n\r\n";
     }
     
-    text += "#L2#取消#l";
+    text += "#L2# ⬅️ 返回昨日小睡主菜单 #l";
     
     cm.sendSimple(text);
 }
@@ -78,9 +78,9 @@ function handleSkillSelection(selection) {
             keyName = "#e+#n键";
             keySymbol = "#e+#n";
             break;
-        case 2:  // 取消
-            cm.sendOk("#b已取消。#k");
+        case 2:  // 返回
             cm.dispose();
+            cm.openNpc(9900001);
             return;
     }
     

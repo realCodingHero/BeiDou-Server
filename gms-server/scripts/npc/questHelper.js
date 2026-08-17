@@ -32,6 +32,11 @@ function action(mode, type, selection) {
         if (status === 0) {
             showQuestList();
         } else if (status === 1) {
+            if (selection === 999990) {
+                cm.dispose();
+                cm.openNpc(9900001);
+                return;
+            }
             selectedQuestId = selection;
             showQuestDetail(selectedQuestId);
         } else if (status === 2) {
@@ -61,7 +66,7 @@ function showQuestList() {
 
     var quests = service.getStartedQuestSummaries(cm.getPlayer());
     if (!quests || quests.size() === 0) {
-        cm.sendOk("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！");
+        cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990# ⬅️ 返回昨日小睡主菜单 #l");
         return;
     }
 
@@ -72,6 +77,7 @@ function showQuestList() {
         var q = quests.get(i);
         text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k#l\r\n";
     }
+    text += "\r\n#L999990# ⬅️ 返回昨日小睡主菜单 #l";
 
     cm.sendSimple(text);
 }

@@ -56,6 +56,7 @@ function levelmain() {
             Msg_Select += `普通怪物：${List_Mob.length} 种\r\n`;
             Msg_Select += getSelecttext(List_Mob);
         }
+        Msg_Select += "\r\n#L9999# ⬅️ 返回爆率查询主菜单 #l\r\n";
         cm.sendNextSelectLevel('ShowDropList', Msg_Select,2);
     }
 }
@@ -72,7 +73,7 @@ function getSelecttext(moblist) {
         let id = obj.getId();
         let select = '#fUI/UIWindow.img/UserList/Friend/icon04# ';
         let name = !obj.getName() || obj.getName() == 'MISSINGNO' ? `#o${id}#` : obj.getName();     //优先以服务器怪物名称为准，没有的话就显示客户端的
-            name = select + name.padEnd(namelength,'\t');
+        name = select + name.padEnd(namelength,'\t');
         return `#L${id}#${getMobImage(obj)}\r\n#${(obj.isBoss() ? 'r' : 'b') + name}#k\t[ Lv.${getLevelImage(obj.getLevel())} ] #l`
     }).join('\r\n\r\n') + '\r\n\r\n';
 }
@@ -82,6 +83,11 @@ function getSelecttext(moblist) {
  * @param mobId
  */
 function levelShowDropList(mobId) {
+    if (mobId == 9999) {
+        cm.dispose();
+        cm.openNpc(9900001, "当前地图掉落");
+        return;
+    }
     const mob = List_Mob_All.find(mob => mob.getId() == mobId);		 //根据怪物ID获取已缓存的怪物对象
     const table = {
         '物品名称' : 0,

@@ -137,15 +137,17 @@ function levelmain() {
 	text += `#e今日已累积在线：#n${formatMinutes(g_OnlineMinutes)}\r\n`;
 	text += "我们为您准备了丰厚的在线时长奖励，点击领取下方的奖励：\r\n";
 	text += getOnlineRewardListText() + "\r\n\r\n";
-	text += "\r\n【领取说明】\r\n · 每份奖励需手动领取\r\n · #b每日0点#e#r重置#b#n累计时长#k\r\n · 背包空间不足将不会发放奖励\r\n · 坚持在线时间越长，获得奖励越丰厚！"
-	if (g_ClaimStatus == ((1 << config.reward.length) - 1)) {
-		cm.sendOkLevel("",text);	
-	} else {
-		cm.sendNextSelectLevel("claimrewards",text);
-	}
+	text += "#L9999# ⬅️ 返回昨日小睡主菜单 #l\r\n";
+	text += "\r\n【领取说明】\r\n · 每份奖励需手动领取\r\n · #b每日0点#e#r重置#b#n累计时长#k\r\n · 背包空间不足将不会发放奖励\r\n · 坚持在线时间越长，获得奖励越丰厚！";
+	cm.sendNextSelectLevel("claimrewards",text);
 }
 
 function levelclaimrewards(Select) {
+	if (Select == 9999) {
+		cm.dispose();
+		cm.openNpc(9900001);
+		return;
+	}
 	const reward = config.reward[Select];
 	g_ClaimStatus |= (1 << Select);
 	let text = "\r\n";

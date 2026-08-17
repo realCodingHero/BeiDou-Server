@@ -2333,10 +2333,17 @@ function action(mode, type, selection)
                 if (i%3 == 0)
                     title +="\r\n";				
 			}
+			title += "\r\n\r\n#L9999# ⬅️ 返回昨日小睡主菜单 #l";
 			cm.sendSimple(title + "#k\r\n----------------------------------------------------------------------------");
 	    }
 		else if (status == 1 )
 		{
+			if (selection == 9999)
+			{
+				cm.dispose();
+				cm.openNpc(9900001);
+				return;
+			}
 			//第二层对话
 			var iCount = parseInt(co[selection][1]);
 			text = "查询到的UI如下，请过目：\r\n\r\n";
