@@ -685,6 +685,7 @@ public class Server {
             futures.add(initExecutor.submit(Quest::loadAllQuests));
             futures.add(initExecutor.submit(SkillbookInformationProvider::loadAllSkillbookInformation));
             futures.add(initExecutor.submit(org.gms.server.quest.QuestHelpService.getInstance()::ensureInitialized));
+            futures.add(initExecutor.submit(org.gms.server.shop.EquipShopService.getInstance()::initialize));
             // Wait on all async tasks to complete
             for (Future<?> future : futures) {
                 future.get();

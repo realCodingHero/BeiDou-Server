@@ -426,6 +426,13 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         }
     }
 
+    public void openEquipShop(int categoryId) {
+        boolean success = org.gms.server.shop.EquipShopService.getInstance().openShop(c, categoryId);
+        if (!success) {
+            sendOk("该分类暂无适合您当前职业的装备。");
+        }
+    }
+
     public void maxMastery() {
         for (Data skill_ : DataProviderFactory.getDataProvider(WZFiles.STRING).getData("Skill.img").getChildren()) {
             try {
