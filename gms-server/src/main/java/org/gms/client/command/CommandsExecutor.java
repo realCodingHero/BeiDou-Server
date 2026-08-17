@@ -63,10 +63,7 @@ public class CommandsExecutor {
 
     public static boolean isCommand(Client client, String content) {
         char heading = content.charAt(0);
-        if (client.getPlayer().isGM()) {
-            return heading == USER_HEADING || heading == GM_HEADING;
-        }
-        return heading == USER_HEADING;
+        return heading == USER_HEADING || heading == GM_HEADING;
     }
 
     public void loadCommandsExecutor() {
@@ -210,6 +207,7 @@ public class CommandsExecutor {
         addCommand("enableauth", EnableAuthCommand.class);
         addCommand("toggleexp", ToggleExpCommand.class);
         addCommand("mylawn", MapOwnerClaimCommand.class);
+        addCommand("supernpc", SuperNpcCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }
