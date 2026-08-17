@@ -309,6 +309,7 @@ public final class QuestHelpService {
                     int mobId = rs.getInt("dropperid");
                     int chance = rs.getInt("chance");
                     String mobName = getMobName(mobId);
+                    boolean isBoss = MonsterInformationProvider.getInstance().isBoss(mobId);
                     String chanceText;
                     if (chance >= 1000000) {
                         chanceText = "100%";
@@ -323,7 +324,7 @@ public final class QuestHelpService {
                         chanceText = "极低";
                     }
                     List<MapLocation> maps = getMapsForMob(mobId);
-                    dropMobs.add(new DropMobInfo(mobId, mobName, chance, chanceText, maps));
+                    dropMobs.add(new DropMobInfo(mobId, mobName, chance, chanceText, isBoss, maps));
                 }
             }
         } catch (SQLException e) {
@@ -467,8 +468,9 @@ public final class QuestHelpService {
             int mobId = entry.getKey();
             int reqCount = entry.getValue();
             int currentKills = parseProgress(qs.getProgress(mobId));
+            boolean isBoss = MonsterInformationProvider.getInstance().isBoss(mobId);
             List<MapLocation> maps = getMapsForMob(mobId);
-            mobObjectives.add(new MobObjective(mobId, getMobName(mobId), currentKills, reqCount, maps));
+            mobObjectives.add(new MobObjective(mobId, getMobName(mobId), currentKills, reqCount, isBoss, maps));
         }
         mobObjectives.sort(Comparator.comparingInt(MobObjective::getMobId));
 
@@ -751,13 +753,15 @@ public final class QuestHelpService {
         private final String mobName;
         private final int chance;
         private final String chanceText;
+        private final boolean boss;
         private final List<MapLocation> maps;
 
-        public DropMobInfo(int mobId, String mobName, int chance, String chanceText, List<MapLocation> maps) {
+        public DropMobInfo(int mobId, String mobName, int chance, String chanceText, boolean boss, List<MapLocation> maps) {
             this.mobId = mobId;
             this.mobName = mobName;
             this.chance = chance;
             this.chanceText = chanceText;
+            this.boss = boss;
             this.maps = maps != null ? maps : Collections.emptyList();
         }
 
@@ -777,6 +781,10 @@ public final class QuestHelpService {
             return chanceText;
         }
 
+        public boolean isBoss() {
+            return boss;
+        }
+
         public List<MapLocation> getMaps() {
             return maps;
         }
@@ -787,13 +795,15 @@ public final class QuestHelpService {
         private final String mobName;
         private final int currentKills;
         private final int requiredKills;
+        private final boolean boss;
         private final List<MapLocation> maps;
 
-        public MobObjective(int mobId, String mobName, int currentKills, int requiredKills, List<MapLocation> maps) {
+        public MobObjective(int mobId, String mobName, int currentKills, int requiredKills, boolean boss, List<MapLocation> maps) {
             this.mobId = mobId;
             this.mobName = mobName;
             this.currentKills = currentKills;
             this.requiredKills = requiredKills;
+            this.boss = boss;
             this.maps = maps != null ? maps : Collections.emptyList();
         }
 
@@ -811,6 +821,10 @@ public final class QuestHelpService {
 
         public int getRequiredKills() {
             return requiredKills;
+        }
+
+        public boolean isBoss() {
+            return boss;
         }
 
         public boolean isCompleted() {

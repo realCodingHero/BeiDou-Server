@@ -216,7 +216,11 @@ function showQuestDetail(questId) {
         for (var i = 0; i < mobObjs.size(); i++) {
             var mob = mobObjs.get(i);
             var statusTag = mob.isCompleted() ? " #g[已达成]#k" : " #r[未完成]#k";
-            text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
+            if (mob.isBoss()) {
+                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #d[Boss怪物，已关闭直达传送]#k\r\n";
+            } else {
+                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
+            }
         }
         text += "\r\n";
     }
@@ -301,6 +305,10 @@ function handleDetailSelection(selection) {
     if (selection >= 100000 && selection < 200000) {
         var index = selection - 100000;
         var mob = currentDetail.getMobObjectives().get(index);
+        if (mob.isBoss()) {
+            cm.sendOk("怪物 【" + mob.getMobName() + "】 为 Boss 怪物，为了游戏平衡与挑战流程，已关闭直接传送至 Boss 房间的功能，请自行前往挑战！");
+            return;
+        }
         currentMapList = mob.getMaps();
 
         if (!currentMapList || currentMapList.size() === 0) {
@@ -332,7 +340,11 @@ function handleDetailSelection(selection) {
         var text = "#e#b掉落道具 【" + selectedItem.getItemName() + "】 的怪物列表：#k#n\r\n点击怪物查看分布地图并传送：\r\n\r\n";
         for (var i = 0; i < dropMobs.size(); i++) {
             var dropMob = dropMobs.get(i);
-            text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
+            if (dropMob.isBoss()) {
+                text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #d[Boss怪物，已关闭直达传送]#k\r\n";
+            } else {
+                text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
+            }
         }
         text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
@@ -418,6 +430,10 @@ function handleSubSelection(selection) {
     if (selection >= 400000 && selection < 500000) {
         var index = selection - 400000;
         var dropMob = selectedItem.getDropMobs().get(index);
+        if (dropMob.isBoss()) {
+            cm.sendOk("怪物 【" + dropMob.getMobName() + "】 为 Boss 怪物，为了游戏平衡与挑战流程，已关闭直接传送至 Boss 房间的功能，请自行前往挑战！");
+            return;
+        }
         currentMapList = dropMob.getMaps();
 
         if (!currentMapList || currentMapList.size() === 0) {
