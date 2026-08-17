@@ -125,7 +125,7 @@ function levelStart() {
     text += "#L1#练级地图#l\r\n";
     text += "#L2#城镇地图#l\r\n";
     text += "#L3#活动跳跳坐牢地图#l\r\n\r\n";
-    text += "#L9999# ⬅️ 返回昨日小睡主菜单 #l\r\n";
+    text += "#L9999##b[返回昨日小睡主菜单]#k#l\r\n";
     cm.sendSelectLevel(text);
 }
 
@@ -139,7 +139,7 @@ function level0() {
     for (let i = 0; i < bossmaps.length; i++) {  
        text += "#L" + i + "#" + bossmaps[i][2] + "#l\r\n";
     }	
-    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
+    text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("Boss", text);
 }
 
@@ -148,7 +148,7 @@ function level1() {
     for (let i = 0; i < monstermaps.length; i++) {  
        text += "#L" + i + "#" + monstermaps[i][2] + "#l\r\n";
     }	
-    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
+    text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("LevelUp", text);
 }
 
@@ -157,7 +157,7 @@ function level2() {
     for (let i = 0; i < townmaps.length; i++) {  
        text += "#L" + i + "#" + townmaps[i][2] + "#l\r\n";
     }	
-    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
+    text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("Town", text);
 }
 
@@ -166,7 +166,7 @@ function level3() {
     for (let i = 0; i < fubenmaps.length; i++) {  
        text += "#L" + i + "#" + fubenmaps[i][2] + "#l\r\n";
     }	
-    text += "\r\n#L9999# ⬅️ 返回传送主菜单 #l\r\n";
+    text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("Fuben", text);
 }
 

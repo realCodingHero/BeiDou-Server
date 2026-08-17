@@ -56,7 +56,7 @@ function levelmain() {
             Msg_Select += `普通怪物：${List_Mob.length} 种\r\n`;
             Msg_Select += getSelecttext(List_Mob);
         }
-        Msg_Select += "\r\n#L9999# ⬅️ 返回爆率查询主菜单 #l\r\n";
+        Msg_Select += "\r\n#L9999##b[返回爆率查询主菜单]#k#l\r\n";
         cm.sendNextSelectLevel('ShowDropList', Msg_Select,2);
     }
 }

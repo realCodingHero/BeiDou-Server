@@ -57,7 +57,7 @@ function levelStart() {
     text += "#L9##r卷轴/强化#k#l\r\n";
     text += "#L10##r其他物品#k#l\r\n";
     text += "#L11##r职业技能书#k#l\r\n\r\n";
-    text += "#L9999# ⬅️ 返回爆率查询主菜单 #l\r\n";
+    text += "#L9999##b[返回爆率查询主菜单]#k#l\r\n";
     text += "#L12##r关闭#k#l";
     
     cm.sendNextSelectLevel('handleMainSelection', text, 2);
