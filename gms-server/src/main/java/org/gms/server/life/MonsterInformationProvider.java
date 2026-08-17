@@ -45,6 +45,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MonsterInformationProvider {
     private static final Logger log = LoggerFactory.getLogger(MonsterInformationProvider.class);
@@ -70,7 +71,7 @@ public class MonsterInformationProvider {
     private final Map<Integer, Pair<Integer, Integer>> mobAttackInfo = new HashMap<>();
 
     private final Map<Integer, Boolean> mobBossCache = new HashMap<>();
-    private final Map<Integer, String> mobNameCache = new HashMap<>();
+    private final Map<Integer, String> mobNameCache = new ConcurrentHashMap<>();
 
     protected MonsterInformationProvider() {
         retrieveGlobal();
