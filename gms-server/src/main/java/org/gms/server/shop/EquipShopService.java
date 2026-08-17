@@ -286,7 +286,52 @@ public class EquipShopService {
         }
     }
 
+    public static final int SUB_WEAPON_ALL = 0;
+    public static final int SUB_WEAPON_SWORD = 1;     // 单手剑(130), 双手剑(140)
+    public static final int SUB_WEAPON_AXE = 2;       // 单手斧(131), 双手斧(141)
+    public static final int SUB_WEAPON_BLUNT = 3;     // 单手钝器(132), 双手钝器(142)
+    public static final int SUB_WEAPON_SPEAR_POLEARM = 4; // 枪(143), 矛(144)
+    public static final int SUB_WEAPON_WAND_STAFF = 5;// 短杖(137), 长杖(138)
+    public static final int SUB_WEAPON_BOW_CROSSBOW = 6;// 弓(145), 弩(146)
+    public static final int SUB_WEAPON_DAGGER_CLAW = 7; // 短刀(133), 拳套(147)
+    public static final int SUB_WEAPON_KNUCKLE_GUN = 8; // 指虎(148), 火枪(149)
+    public static final int SUB_WEAPON_COMMON = 9;    // 全职业通用趣味武器 (reqJob == 0)
+
+    private boolean isWeaponMatchingSubType(int itemId, int reqJob, int subType) {
+        if (subType == SUB_WEAPON_ALL) {
+            return true;
+        }
+        if (subType == SUB_WEAPON_COMMON) {
+            return reqJob == 0;
+        }
+        int prefix = (itemId / 10000) % 100;
+        switch (subType) {
+            case SUB_WEAPON_SWORD:
+                return prefix == 30 || prefix == 40;
+            case SUB_WEAPON_AXE:
+                return prefix == 31 || prefix == 41;
+            case SUB_WEAPON_BLUNT:
+                return prefix == 32 || prefix == 42;
+            case SUB_WEAPON_SPEAR_POLEARM:
+                return prefix == 43 || prefix == 44;
+            case SUB_WEAPON_WAND_STAFF:
+                return prefix == 37 || prefix == 38;
+            case SUB_WEAPON_BOW_CROSSBOW:
+                return prefix == 45 || prefix == 46;
+            case SUB_WEAPON_DAGGER_CLAW:
+                return prefix == 33 || prefix == 47;
+            case SUB_WEAPON_KNUCKLE_GUN:
+                return prefix == 48 || prefix == 49;
+            default:
+                return true;
+        }
+    }
+
     public boolean openShop(Client c, int categoryId) {
+        return openShop(c, categoryId, 0, 0, 0);
+    }
+
+    public boolean openShop(Client c, int categoryId, int subType, int minLevel, int maxLevel) {
         if (!initialized) {
             initialize();
         }
@@ -300,11 +345,23 @@ public class EquipShopService {
         boolean isGM = chr.isGM();
         int jobBit = getJobBit(chr.getJob());
 
-        Shop shop = new Shop(99000000 + categoryId * 100 + jobBit, 9900001);
+        int shopId = 99000000 + categoryId * 10000 + subType * 100 + jobBit;
+        Shop shop = new Shop(shopId, 9900001);
+
         for (EquipEntry entry : allEntries) {
+            if (minLevel > 0 && entry.getReqLevel() < minLevel) {
+                continue;
+            }
+            if (maxLevel > 0 && entry.getReqLevel() > maxLevel) {
+                continue;
+            }
+
             if (!isGM) {
                 if (categoryId == CATEGORY_WEAPON) {
-                    if (!isWeaponSuitableForJob(entry.getItemId(), jobBit, entry.getReqJob())) {
+                    if (subType != SUB_WEAPON_COMMON && !isWeaponSuitableForJob(entry.getItemId(), jobBit, entry.getReqJob())) {
+                        continue;
+                    }
+                    if (!isWeaponMatchingSubType(entry.getItemId(), entry.getReqJob(), subType)) {
                         continue;
                     }
                 } else {
@@ -312,7 +369,14 @@ public class EquipShopService {
                         continue;
                     }
                 }
+            } else {
+                if (categoryId == CATEGORY_WEAPON && subType > 0) {
+                    if (!isWeaponMatchingSubType(entry.getItemId(), entry.getReqJob(), subType)) {
+                        continue;
+                    }
+                }
             }
+
             shop.addItem(new ShopItem((short) 1000, entry.getItemId(), entry.getPrice(), 0));
         }
 

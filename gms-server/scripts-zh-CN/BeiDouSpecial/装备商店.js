@@ -1,12 +1,14 @@
 /**
  * @description 昨日小睡 - 装备商店子菜单
- * 支持 12 大部位装备商店分类、自动过滤非现金与非本职业装备、等级由低到高升序排列
+ * 支持 12 大部位装备商店分类、自动过滤非现金与非本职业装备、分段/分类型极速加载无卡顿
  */
 
 var status = -1;
+var selectedCategory = -1;
 
 function start() {
     status = -1;
+    selectedCategory = -1;
     action(1, 0, 0);
 }
 
@@ -39,9 +41,100 @@ function action(mode, type, selection) {
             return;
         }
 
-        if (selection >= 1 && selection <= 12) {
+        selectedCategory = selection;
+
+        // 武器商店：展示根据职业细分的武器种类
+        if (selectedCategory === 1) {
+            var job = cm.getPlayer().getJob();
+            var jobType = Math.floor(job.getId() / 100);
+            var isGM = cm.getPlayer().isGM();
+
+            var text = "\t\t\t\t#e#b【 武器商店 - 武器种类选择 】#k#n\r\n\r\n";
+            text += "请选择您要查看的武器类型：\r\n\r\n";
+
+            if (isGM || jobType === 1 || jobType === 11 || jobType === 21) {
+                text += "#L1#单手剑 / 双手剑#l\r\n";
+                text += "#L2#单手斧 / 双手斧#l\r\n";
+                text += "#L3#单手钝器 / 双手钝器#l\r\n";
+                text += "#L4#枪 / 矛#l\r\n";
+            }
+            if (isGM || jobType === 2 || jobType === 12 || jobType === 22 || job.getId() === 2001) {
+                text += "#L5#短杖 / 长杖#l\r\n";
+            }
+            if (isGM || jobType === 3 || jobType === 13) {
+                text += "#L6#弓 / 弩#l\r\n";
+            }
+            if (isGM || jobType === 4 || jobType === 14) {
+                text += "#L7#短刀 / 拳套#l\r\n";
+            }
+            if (isGM || jobType === 5 || jobType === 15) {
+                text += "#L8#指虎 / 火枪#l\r\n";
+            }
+
+            text += "#L9#全职业通用趣味武器#l\r\n";
+            text += "#L0#全部职业武器 (全量浏览)#l\r\n\r\n";
+            text += "#L9999##b[返回装备商店主菜单]#k#l\r\n";
+
+            cm.sendSimple(text);
+        }
+        // 防具大类（帽子、上衣、裤裙、套服、手套、鞋子）：提供等级段选择，实现秒开无卡顿
+        else if (selectedCategory >= 2 && selectedCategory <= 7) {
+            var catNames = ["", "武器", "帽子", "上衣", "裤裙", "套服", "手套", "鞋子"];
+            var catName = catNames[selectedCategory] || "防具";
+
+            var text = "\t\t\t\t#e#b【 " + catName + "商店 - 等级区间选择 】#k#n\r\n\r\n";
+            text += "请选择您要查看的装备等级阶段（分段浏览秒开无卡顿）：\r\n\r\n";
+            text += "#L201#新手入门 (1 ~ 40 级)#l\r\n";
+            text += "#L202#中阶勇者 (41 ~ 70 级)#l\r\n";
+            text += "#L203#高阶勇士 (71 ~ 100 级)#l\r\n";
+            text += "#L204#顶级神装 (101 级以上)#l\r\n";
+            text += "#L200#全量浏览 (包含全部等级)#l\r\n\r\n";
+            text += "#L9999##b[返回装备商店主菜单]#k#l\r\n";
+
+            cm.sendSimple(text);
+        }
+        // 饰品与盾牌/披风类（盾牌、披风、耳环、戒指、其它饰品）：道具总量适中，直接秒开
+        else if (selectedCategory >= 8 && selectedCategory <= 12) {
             cm.dispose();
-            cm.openEquipShop(selection);
+            cm.openEquipShop(selectedCategory);
+        } else {
+            cm.dispose();
+        }
+    } else if (status === 2) {
+        if (selection === 9999) {
+            cm.dispose();
+            cm.openNpc("装备商店");
+            return;
+        }
+
+        // 武器子类型选择
+        if (selectedCategory === 1) {
+            var subType = selection;
+            cm.dispose();
+            cm.openEquipShop(1, subType, 0, 0);
+        }
+        // 防具等级区间选择
+        else if (selectedCategory >= 2 && selectedCategory <= 7) {
+            var minLvl = 0;
+            var maxLvl = 0;
+            if (selection === 201) {
+                minLvl = 1;
+                maxLvl = 40;
+            } else if (selection === 202) {
+                minLvl = 41;
+                maxLvl = 70;
+            } else if (selection === 203) {
+                minLvl = 71;
+                maxLvl = 100;
+            } else if (selection === 204) {
+                minLvl = 101;
+                maxLvl = 255;
+            } else {
+                minLvl = 0;
+                maxLvl = 0;
+            }
+            cm.dispose();
+            cm.openEquipShop(selectedCategory, minLvl, maxLvl);
         } else {
             cm.dispose();
         }
