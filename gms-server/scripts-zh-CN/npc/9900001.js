@@ -50,6 +50,7 @@ function action(mode, type, selection) {
 		text += "#L3#传送自由#l \t #L69#快速转职#l \t #L70#学习技能#l\r\n";
 		text += "#L71#超级传送#l \t #L4#爆率一览#l \t #L2#在线奖励#l\r\n";
         text += "#L0#新人福利#l \t #L1#每日签到#l  \t #L72#转世重生#l\r\n";
+        text += "#L80#任务辅助#l\r\n";
 		// text += "#L999#测试脚本>>>未上线#l \t \r\n";
         if (cm.getPlayer().isGM()) {
             text += "\r\n\r\n";
@@ -69,9 +70,13 @@ function action(mode, type, selection) {
 function doSelect(selection) {
     switch (selection) {
         // 非GM功能
+        case 80:
+            openNpc("questHelper");
+            break;
 		case 999:
             openNpc("测试脚本");
             break;
+
         case 69:
             openNpc("快速转职");
             break;

@@ -25,14 +25,12 @@ package org.gms.client.command.commands.gm2;
 
 import org.gms.client.Character;
 import org.gms.client.Client;
-import org.gms.client.Job;
 import org.gms.client.Skill;
-import org.gms.client.SkillFactory;
 import org.gms.client.command.Command;
-import org.gms.provider.Data;
-import org.gms.provider.DataProviderFactory;
-import org.gms.provider.wz.WZFiles;
+import org.gms.constants.game.GameConstants;
 import org.gms.util.I18nUtil;
+
+import java.util.ArrayList;
 
 public class ResetSkillCommand extends Command {
     {
@@ -42,23 +40,22 @@ public class ResetSkillCommand extends Command {
     @Override
     public void execute(Client c, String[] params) {
         Character player = c.getPlayer();
-        for (Data skill_ : DataProviderFactory.getDataProvider(WZFiles.STRING).getData("Skill.img").getChildren()) {
-            try {
-                Skill skill = SkillFactory.getSkill(Integer.parseInt(skill_.getName()));
-                player.changeSkillLevel(skill, (byte) 0, skill.getMaxLevel(), -1);
-            } catch (NumberFormatException nfe) {
-                nfe.printStackTrace();
-                break;
-            } catch (NullPointerException npe) {
-            }
-        }
+        int jobId = player.getJob().getId();
 
-        if (player.getJob().isA(Job.ARAN1) || player.getJob().isA(Job.LEGEND)) {
-            Skill skill = SkillFactory.getSkill(5001005);
-            player.changeSkillLevel(skill, (byte) -1, -1, -1);
-        } else {
-            Skill skill = SkillFactory.getSkill(21001001);
-            player.changeSkillLevel(skill, (byte) -1, -1, -1);
+        // Only reset skills already belonging to this character. Iterating Skill.img
+        // creates an entry for every skill in the WZ data, including skills the
+        // character never learned. Beginner/account skills must remain untouched.
+        for (Skill skill : new ArrayList<>(player.getEditableSkills().keySet())) {
+            if (skill == null || skill.isBeginnerSkill()) {
+                continue;
+            }
+
+            if (!GameConstants.isInJobTree(skill.getId(), jobId)) {
+                // Remove stale entries left by older/broken versions of this command.
+                player.changeSkillLevel(skill, (byte) -1, -1, -1);
+            } else {
+                player.changeSkillLevel(skill, (byte) 0, skill.getMaxLevel(), -1);
+            }
         }
 
         player.yellowMessage(I18nUtil.getMessage("ResetSkillCommand.message2"));

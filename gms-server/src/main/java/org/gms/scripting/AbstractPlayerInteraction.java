@@ -1349,8 +1349,11 @@ public class AbstractPlayerInteraction {
         return getPlayer().getCurrentOnlineTime();
     }
 
+    public org.gms.server.quest.QuestHelpService getQuestHelp() {
+        return org.gms.server.quest.QuestHelpService.getInstance();
+    }
 
-
-
-
-}
+    public org.gms.server.quest.QuestHelpService getQuestHelpService() {
+        return org.gms.server.quest.QuestHelpService.getInstance();
+    }
+}

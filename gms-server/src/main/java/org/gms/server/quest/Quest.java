@@ -71,6 +71,7 @@ import org.gms.util.PacketCreator;
 import org.gms.util.StringUtil;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -459,6 +460,23 @@ public class Quest {
 
         return mreq.getRequiredMobCount(mid);
     }
+
+    public Map<Integer, Integer> getRequiredMobs() {
+        AbstractQuestRequirement req = completeReqs.get(QuestRequirementType.MOB);
+        if (req instanceof MobRequirement mobReq) {
+            return mobReq.getMobs();
+        }
+        return Collections.emptyMap();
+    }
+
+    public Map<Integer, Integer> getRequiredItems() {
+        AbstractQuestRequirement req = completeReqs.get(QuestRequirementType.ITEM);
+        if (req instanceof ItemRequirement itemReq) {
+            return itemReq.getItems();
+        }
+        return Collections.emptyMap();
+    }
+
 
     public short getInfoNumber(Status qs) {
         boolean checkEnd = qs.equals(Status.STARTED);

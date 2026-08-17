@@ -87,4 +87,9 @@ public class MobRequirement extends AbstractQuestRequirement {
         }
         return 0;
     }
+
+    public Map<Integer, Integer> getMobs() {
+        return java.util.Collections.unmodifiableMap(mobs);
+    }
 }
+
