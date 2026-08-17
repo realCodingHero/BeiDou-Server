@@ -47,27 +47,27 @@ function action(mode, type, selection) {
         if (selectedCategory === 1) {
             var job = cm.getPlayer().getJob();
             var jobType = Math.floor(job.getId() / 100);
-            var isGM = cm.getPlayer().isGM();
+            var isGMJob = (job.getId() === 900 || job.getId() === 910 || job.getId() === 0 || job.getId() === 1000 || job.getId() === 2000);
 
             var text = "\t\t\t\t#e#b【 武器商店 - 武器种类选择 】#k#n\r\n\r\n";
             text += "请选择您要查看的武器类型：\r\n\r\n";
 
-            if (isGM || jobType === 1 || jobType === 11 || jobType === 21) {
+            if (isGMJob || jobType === 1 || jobType === 11 || jobType === 21) {
                 text += "#L1#单手剑 / 双手剑#l\r\n";
                 text += "#L2#单手斧 / 双手斧#l\r\n";
                 text += "#L3#单手钝器 / 双手钝器#l\r\n";
                 text += "#L4#枪 / 矛#l\r\n";
             }
-            if (isGM || jobType === 2 || jobType === 12 || jobType === 22 || job.getId() === 2001) {
+            if (isGMJob || jobType === 2 || jobType === 12 || jobType === 22 || job.getId() === 2001) {
                 text += "#L5#短杖 / 长杖#l\r\n";
             }
-            if (isGM || jobType === 3 || jobType === 13) {
+            if (isGMJob || jobType === 3 || jobType === 13) {
                 text += "#L6#弓 / 弩#l\r\n";
             }
-            if (isGM || jobType === 4 || jobType === 14) {
+            if (isGMJob || jobType === 4 || jobType === 14) {
                 text += "#L7#短刀 / 拳套#l\r\n";
             }
-            if (isGM || jobType === 5 || jobType === 15) {
+            if (isGMJob || jobType === 5 || jobType === 15) {
                 text += "#L8#指虎 / 火枪#l\r\n";
             }
 

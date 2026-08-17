@@ -342,7 +342,6 @@ public class EquipShopService {
         }
 
         Character chr = c.getPlayer();
-        boolean isGM = chr.isGM();
         int jobBit = getJobBit(chr.getJob());
 
         int shopId = 99000000 + categoryId * 10000 + subType * 100 + jobBit;
@@ -356,24 +355,17 @@ public class EquipShopService {
                 continue;
             }
 
-            if (!isGM) {
-                if (categoryId == CATEGORY_WEAPON) {
-                    if (subType != SUB_WEAPON_COMMON && !isWeaponSuitableForJob(entry.getItemId(), jobBit, entry.getReqJob())) {
-                        continue;
-                    }
-                    if (!isWeaponMatchingSubType(entry.getItemId(), entry.getReqJob(), subType)) {
-                        continue;
-                    }
-                } else {
-                    if (entry.getReqJob() != 0 && (entry.getReqJob() & jobBit) == 0) {
-                        continue;
-                    }
+            if (categoryId == CATEGORY_WEAPON) {
+                if (subType != SUB_WEAPON_COMMON && !isWeaponSuitableForJob(entry.getItemId(), jobBit, entry.getReqJob())) {
+                    continue;
+                }
+                if (!isWeaponMatchingSubType(entry.getItemId(), entry.getReqJob(), subType)) {
+                    continue;
                 }
             } else {
-                if (categoryId == CATEGORY_WEAPON && subType > 0) {
-                    if (!isWeaponMatchingSubType(entry.getItemId(), entry.getReqJob(), subType)) {
-                        continue;
-                    }
+                // 防具、饰品等部位：仅显示本职业装备及全职业通用装备 (reqJob == 0)
+                if (entry.getReqJob() != 0 && (entry.getReqJob() & jobBit) == 0) {
+                    continue;
                 }
             }
 
