@@ -387,6 +387,19 @@ public final class QuestHelpService {
         });
     }
 
+    /**
+     * 判断玩家是否已达成该任务的全部完成条件（杀怪、道具收集等），可前往交付
+     * 传入该任务预期的完成 NPC ID，以便正确通过底层 NpcRequirement 校验
+     */
+    public boolean isQuestCompletable(Character player, Quest q) {
+        if (player == null || q == null) {
+            return false;
+        }
+        int completeNpcId = q.getNpcRequirement(true);
+        Integer npcId = completeNpcId > 0 ? completeNpcId : null;
+        return q.canComplete(player, npcId);
+    }
+
     public List<QuestSummary> getStartedQuestSummaries(Character player) {
         if (player == null) {
             return Collections.emptyList();
@@ -399,7 +412,7 @@ public final class QuestHelpService {
             if (name == null || name.isBlank()) {
                 name = "任务 " + q.getId();
             }
-            boolean canComplete = q.canComplete(player, null);
+            boolean canComplete = isQuestCompletable(player, q);
             list.add(new QuestSummary(q.getId(), name, canComplete));
         }
         list.sort(Comparator.comparingInt(QuestSummary::getQuestId));
@@ -443,7 +456,7 @@ public final class QuestHelpService {
         if (questName == null || questName.isBlank()) {
             questName = "任务 " + questId;
         }
-        boolean canComplete = q.canComplete(player, null);
+        boolean canComplete = isQuestCompletable(player, q);
 
         // 1. NPC Info
         int startNpcId = q.getNpcRequirement(false);
