@@ -103,4 +103,9 @@ public class ItemRequirement extends AbstractQuestRequirement {
             return complete ? Integer.MAX_VALUE : Integer.MIN_VALUE;
         }
     }
+
+    public Map<Integer, Integer> getItems() {
+        return java.util.Collections.unmodifiableMap(items);
+    }
 }
+
