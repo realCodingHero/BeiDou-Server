@@ -22,6 +22,7 @@ package org.gms.server.shop;
 import org.gms.client.Character;
 import org.gms.client.Client;
 import org.gms.client.Job;
+import org.gms.constants.inventory.ItemConstants;
 import org.gms.provider.Data;
 import org.gms.provider.DataDirectoryEntry;
 import org.gms.provider.DataFileEntry;
@@ -166,6 +167,10 @@ public class EquipShopService {
                         continue;
                     }
 
+                    if (isExcludedEquip(itemId, name, info, ii)) {
+                        continue;
+                    }
+
                     int reqLevel = org.gms.provider.DataTool.getInt("reqLevel", info, 0);
                     int reqJob = org.gms.provider.DataTool.getInt("reqJob", info, 0);
                     int wholePrice = org.gms.provider.DataTool.getInt("price", info, 0);
@@ -193,8 +198,58 @@ public class EquipShopService {
         }
 
         initialized = true;
-        log.info("EquipShopService initialized {} non-cash equipment items across 12 categories in {}ms",
+        log.info("EquipShopService initialized {} regular equipment items across 12 categories in {}ms",
                 totalIndexed, System.currentTimeMillis() - startTime);
+    }
+
+    /**
+     * 判断装备是否属于特殊/非商店装备（Boss专属、勋章、任务专属、不可交易等），是则予以剔除
+     */
+    private boolean isExcludedEquip(int itemId, String name, Data info, ItemInformationProvider ii) {
+        // 1. 勋章全系列（114xxxx 或 islot="Me"）
+        if (ItemConstants.isMedal(itemId) || itemId / 10000 == 114) {
+            return true;
+        }
+        String islot = org.gms.provider.DataTool.getString("islot", info, "");
+        if ("Me".equalsIgnoreCase(islot)) {
+            return true;
+        }
+
+        // 2. 任务 / 组队任务专属装备
+        int quest = org.gms.provider.DataTool.getInt("quest", info, 0);
+        int pquest = org.gms.provider.DataTool.getInt("pquest", info, 0);
+        if (quest == 1 || pquest == 1 || ii.isQuestItem(itemId) || ii.isPartyQuestItem(itemId)) {
+            return true;
+        }
+
+        // 3. 限制属性装备（包括扎昆头盔、黑龙王项链、品克缤圣杯/耳环、蝙蝠魔装备、各类 Boss 专属掉落与不可交易绑定装）
+        int only = org.gms.provider.DataTool.getInt("only", info, 0);
+        int tradeBlock = org.gms.provider.DataTool.getInt("tradeBlock", info, 0);
+        int notSale = org.gms.provider.DataTool.getInt("notSale", info, 0);
+        int accountSharable = org.gms.provider.DataTool.getInt("accountSharable", info, 0);
+        if (only == 1 || tradeBlock == 1 || notSale == 1 || accountSharable == 1) {
+            return true;
+        }
+        if (ii.isPickupRestricted(itemId) || ii.isUntradeableRestricted(itemId) || ii.isAccountRestricted(itemId) || ii.isDropRestricted(itemId)) {
+            return true;
+        }
+
+        // 4. 社交/婚姻系统戒指
+        if ((itemId >= 1112000 && itemId <= 1112020) ||
+            (itemId >= 1112400 && itemId <= 1112420) ||
+            (itemId >= 1112800 && itemId <= 1112820)) {
+            return true;
+        }
+
+        // 5. GM / 管理员装备
+        if (itemId == 1322013 || itemId == 1002140 || itemId == 1042003 || itemId == 1062007 || itemId == 1082002 || itemId == 1072007) {
+            return true;
+        }
+        if (name != null && (name.contains("GM") || name.contains("管理员") || name.contains("测试专用"))) {
+            return true;
+        }
+
+        return false;
     }
 
     private boolean isEquipFolder(String dirName) {
@@ -234,7 +289,7 @@ public class EquipShopService {
             return CATEGORY_EARRING;
         } else if (itemId >= 1110000 && itemId < 1120000) {
             return CATEGORY_RING;
-        } else if ((itemId >= 1010000 && itemId < 1030000) || (itemId >= 1120000 && itemId < 1150000)) {
+        } else if ((itemId >= 1010000 && itemId < 1030000) || (itemId >= 1120000 && itemId < 1140000)) {
             return CATEGORY_ACCESSORY;
         }
         return 0;
