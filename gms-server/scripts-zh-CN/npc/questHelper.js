@@ -373,9 +373,8 @@ function handleDetailSelection(selection) {
             return;
         }
         if (currentMapList.size() === 1) {
-            var mapId = currentMapList.get(0).getMapId();
-            cm.warp(mapId);
-            cm.playerMessage(5, "已传送至接取 NPC 【" + startNpc.getNpcName() + "】 所在地图！");
+            var targetMap = currentMapList.get(0);
+            tryWarpPlayer(targetMap, "已传送至接取 NPC 【" + startNpc.getNpcName() + "】 所在地图：");
             cm.dispose();
             return;
         }
@@ -398,9 +397,8 @@ function handleDetailSelection(selection) {
             return;
         }
         if (currentMapList.size() === 1) {
-            var mapId = currentMapList.get(0).getMapId();
-            cm.warp(mapId);
-            cm.playerMessage(5, "已传送至交付 NPC 【" + compNpc.getNpcName() + "】 所在地图！");
+            var targetMap = currentMapList.get(0);
+            tryWarpPlayer(targetMap, "已传送至交付 NPC 【" + compNpc.getNpcName() + "】 所在地图：");
             cm.dispose();
             return;
         }
@@ -432,8 +430,7 @@ function handleSubSelection(selection) {
         var mapIndex = selection - 500000;
         if (currentMapList && mapIndex < currentMapList.size()) {
             var targetMap = currentMapList.get(mapIndex);
-            cm.warp(targetMap.getMapId());
-            cm.playerMessage(5, "已传送至 " + targetMap.getDisplayName() + "！祝你任务顺利！");
+            tryWarpPlayer(targetMap);
         }
         cm.dispose();
         return;
@@ -482,12 +479,31 @@ function handleMapWarp(selection) {
         var mapIndex = selection - 500000;
         if (currentMapList && mapIndex < currentMapList.size()) {
             var targetMap = currentMapList.get(mapIndex);
-            cm.warp(targetMap.getMapId());
-            cm.playerMessage(5, "已传送至 " + targetMap.getDisplayName() + "！祝你任务顺利！");
+            tryWarpPlayer(targetMap);
         }
         cm.dispose();
         return;
     }
 
     cm.dispose();
+}
+
+/**
+ * 统一传送扣费与金币校验方法
+ */
+function tryWarpPlayer(targetMap, noticePrefix) {
+    var cost = targetMap.getWarpCost();
+    if (cost > 0 && cm.getPlayer().getMeso() < cost) {
+        cm.sendOk("您的金币不足，无法进行传送！\r\n\r\n目的地：#b" + targetMap.getDisplayName() + "#k\r\n需要费用：#r" + cost + " 金币#k\r\n当前持有：#d" + cm.getPlayer().getMeso() + " 金币#k\r\n\r\n请准备好足够的金币后再来使用传送功能！");
+        return false;
+    }
+
+    if (cost > 0) {
+        cm.gainMeso(-cost);
+    }
+    cm.warp(targetMap.getMapId());
+    var costMsg = cost > 0 ? "，扣除传送费用 " + cost + " 金币" : "";
+    var prefix = noticePrefix ? noticePrefix : "已传送至 ";
+    cm.playerMessage(5, prefix + targetMap.getDisplayName() + costMsg + "！祝你任务顺利！");
+    return true;
 }

@@ -52,10 +52,78 @@ public class ExpAction extends AbstractQuestAction {
     }
 
     public static void runAction(Character chr, int gain) {
-        if (!GameConfig.getServerBoolean("use_quest_rate")) {
-            chr.gainExp(NumberTool.floatToInt(gain * chr.getExpRate()), true, true);
-        } else {
-            chr.gainExp(NumberTool.floatToInt(gain * chr.getQuestExpRate()), true, true);
+        if (gain <= 0) {
+            return;
+        }
+
+        boolean useQuestRate = GameConfig.getServerBoolean("use_quest_rate");
+        float finalRate = useQuestRate ? chr.getQuestExpRate() : chr.getExpRate();
+        int totalExp = NumberTool.floatToInt(gain * finalRate);
+
+        chr.gainExp(totalExp, true, true);
+
+        // 如果存在经验加成且非新手保护限制
+        if (totalExp > gain && !chr.hasNoviceExpRate()) {
+            chr.dropMessage(5, "得到经验值 (+" + gain + ")");
+
+            boolean hasSpecificBonus = false;
+
+            // 1. 任务专属倍率加成 (quest_rate)
+            if (useQuestRate) {
+                float questRate = chr.getWorldServer().getQuestRate();
+                if (questRate > 1.0f) {
+                    int questBonus = NumberTool.floatToInt(gain * (questRate - 1.0f));
+                    if (questBonus > 0) {
+                        chr.dropMessage(5, "任务倍率奖励 (+" + questBonus + ")");
+                        hasSpecificBonus = true;
+                    }
+                }
+            }
+
+            // 2. 世界/服务器活动基础经验倍率 (world exp rate)
+            float worldRate = chr.getWorldServer().getExpRate();
+            if (worldRate > 1.0f) {
+                int worldBonus = NumberTool.floatToInt(gain * (worldRate - 1.0f));
+                if (worldBonus > 0) {
+                    chr.dropMessage(5, "活动倍率奖励 (+" + worldBonus + ")");
+                    hasSpecificBonus = true;
+                }
+            }
+
+            // 3. 双倍经验卡加成 (exp coupon)
+            int couponRate = chr.getCouponExpRate();
+            if (couponRate > 1) {
+                int couponBonus = NumberTool.floatToInt(gain * (couponRate - 1));
+                if (couponBonus > 0) {
+                    chr.dropMessage(5, "双倍经验卡奖励 (+" + couponBonus + ")");
+                    hasSpecificBonus = true;
+                }
+            }
+
+            // 4. 角色特权/VIP加成 (raw exp rate)
+            float rawRate = chr.getRawExpRate();
+            if (rawRate > 1.0f) {
+                int rawBonus = NumberTool.floatToInt(gain * (rawRate - 1.0f));
+                if (rawBonus > 0) {
+                    chr.dropMessage(5, "特权经验奖励 (+" + rawBonus + ")");
+                    hasSpecificBonus = true;
+                }
+            }
+
+            // 5. 家族特权加成 (family exp)
+            float familyRate = chr.getFamilyExp();
+            if (familyRate > 1.0f) {
+                int familyBonus = NumberTool.floatToInt(gain * (familyRate - 1.0f));
+                if (familyBonus > 0) {
+                    chr.dropMessage(5, "家族特权奖励 (+" + familyBonus + ")");
+                    hasSpecificBonus = true;
+                }
+            }
+
+            // 若有未命名的复合加成兜底
+            if (!hasSpecificBonus && (totalExp - gain) > 0) {
+                chr.dropMessage(5, "任务倍率奖励 (+" + (totalExp - gain) + ")");
+            }
         }
     }
 } 
