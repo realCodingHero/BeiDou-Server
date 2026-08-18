@@ -731,41 +731,53 @@ public class Monster extends AbstractLoadedLife {
 
     private void giveExpToCharacter(Character attacker, Float personalExp, Float partyExp, boolean white, boolean hasPartySharers) {
         if (attacker.isAlive()) {
-            if (personalExp != null) {
-                personalExp *= getStatusExpMultiplier(attacker, hasPartySharers);
-                personalExp *= (attacker.getExpRate() * attacker.getMobExpRate());
-            } else {
-                personalExp = 0.0f;
+            int _basePersonalExp = 0;
+            int _bonusEventExp = 0;
+
+            if (personalExp != null && personalExp > 0) {
+                // 1. 基础原始经验（按伤害贡献计算的原始经验，保留技能状态影响）
+                float baseRate = getStatusExpMultiplier(attacker, hasPartySharers);
+                float basePersonal = personalExp * baseRate;
+                _basePersonalExp = expValueToInteger(basePersonal);
+
+                // 2. 综合倍率加成（全服倍率、双倍卡、等级动态倍率、Buff、家族等）
+                float totalPersonal = basePersonal * (attacker.getExpRate() * attacker.getMobExpRate());
+
+                Integer expBonus = attacker.getBuffedValue(BuffStat.EXP_INCREASE);
+                if (expBonus != null) {     // exp increase player buff found thanks to HighKey21
+                    totalPersonal += expBonus;
+                }
+
+                Integer expBuff = attacker.getBuffedValue(BuffStat.EXP_BUFF);
+                if (expBuff != null) {
+                    totalPersonal *= 2;
+                }
+
+                if (attacker.isFamilyBuff()) {
+                    totalPersonal *= attacker.getFamilyExp();
+                }
+
+                int _totalPersonalExp = expValueToInteger(totalPersonal);
+
+                // 额外加成经验（活动/倍率经验）= 总个人经验 - 基础原始经验
+                if (_totalPersonalExp > _basePersonalExp) {
+                    _bonusEventExp = _totalPersonalExp - _basePersonalExp;
+                } else {
+                    _basePersonalExp = _totalPersonalExp;
+                    _bonusEventExp = 0;
+                }
             }
 
-            Integer expBonus = attacker.getBuffedValue(BuffStat.EXP_INCREASE);
-            if (expBonus != null) {     // exp increase player buff found thanks to HighKey21
-                personalExp += expBonus;
-            }
-
-            Integer expBuff = attacker.getBuffedValue(BuffStat.EXP_BUFF);
-            if (expBuff != null) {
-                personalExp *= 2;
-            }
-
-            if(attacker.isFamilyBuff()){
-                personalExp *= attacker.getFamilyExp();
-            }
-
-            int _personalExp = expValueToInteger(personalExp); // assuming no negative xp here
-
-            if (partyExp != null) {
+            int _partyExp = 0;
+            if (partyExp != null && partyExp > 0) {
                 partyExp *= getStatusExpMultiplier(attacker, hasPartySharers);
                 partyExp *= (attacker.getExpRate() * attacker.getMobExpRate());
                 partyExp *= GameConfig.getServerFloat("party_bonus_exp_rate");
-            } else {
-                partyExp = 0.0f;
+                _partyExp = expValueToInteger(partyExp);
             }
 
-            int _partyExp = expValueToInteger(partyExp);
-
-            attacker.gainExp(_personalExp, _partyExp, true, false, white);
-            attacker.increaseEquipExp(_personalExp);
+            attacker.gainExp(_basePersonalExp, _bonusEventExp, _partyExp, 0, 0, 0, true, false, white);
+            attacker.increaseEquipExp(_basePersonalExp + _bonusEventExp);
             attacker.raiseQuestMobCount(getId());
             VeteranHunterMedal.onMonsterKilled(attacker, this);
             // 特级挑战勋章复用怪物死亡事件，在角色已接任务时写入个人击杀进度。

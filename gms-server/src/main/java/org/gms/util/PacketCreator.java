@@ -1657,32 +1657,44 @@ public class PacketCreator {
 
     /**
      * Gets a packet telling the client to show an EXP increase.
+    /**
+     * Gets a packet telling the client to show an exp gain with full bonus breakdowns.
      *
-     * @param gain   The amount of EXP gained.
-     * @param inChat In the chat box?
-     * @param white  White text or yellow?
+     * @param gain         The base EXP gained (shown in white).
+     * @param equip        The equip/spirit pendant bonus EXP (shown in yellow).
+     * @param party        The party bonus EXP (shown in yellow).
+     * @param eventBonus   The event/rate/buff bonus EXP (shown in yellow).
+     * @param weddingBonus The wedding bonus EXP (shown in yellow).
+     * @param internetCafe The internet cafe bonus EXP (shown in yellow).
+     * @param rainbowWeek  The rainbow week bonus EXP (shown in yellow).
+     * @param inChat       In the chat box?
+     * @param white        White text or yellow?
      * @return The exp gained packet.
      */
-    public static Packet getShowExpGain(int gain, int equip, int party, boolean inChat, boolean white) {
+    public static Packet getShowExpGain(int gain, int equip, int party, int eventBonus, int weddingBonus, int internetCafe, int rainbowWeek, boolean inChat, boolean white) {
         final OutPacket p = OutPacket.create(SendOpcode.SHOW_STATUS_INFO);
         p.writeByte(3); // 3 = exp, 4 = fame, 5 = mesos, 6 = guildpoints
         p.writeBool(white);
         p.writeInt(gain);
         p.writeBool(inChat);
-        p.writeInt(0); // bonus event exp
+        p.writeInt(eventBonus); // bonus event exp (活动/倍率经验加成)
         p.writeByte(0); // third monster kill event
         p.writeByte(0); // RIP byte, this is always a 0
-        p.writeInt(0); //wedding bonus
+        p.writeInt(weddingBonus); // wedding bonus (结婚经验加成)
         if (inChat) { // quest bonus rate stuff
             p.writeByte(0);
         }
 
-        p.writeByte(0); //0 = party bonus, 100 = 1x Bonus EXP, 200 = 2x Bonus EXP
-        p.writeInt(party); // party bonus
-        p.writeInt(equip); //equip bonus
-        p.writeInt(0); //Internet Cafe Bonus
-        p.writeInt(0); //Rainbow Week Bonus
+        p.writeByte(0); // 0 = party bonus, 100 = 1x Bonus EXP, 200 = 2x Bonus EXP
+        p.writeInt(party); // party bonus (组队经验加成)
+        p.writeInt(equip); // equip bonus (装备/精灵吊坠经验加成)
+        p.writeInt(internetCafe); // Internet Cafe Bonus (网吧/特权经验加成)
+        p.writeInt(rainbowWeek); // Rainbow Week Bonus (彩虹周活动加成)
         return p;
+    }
+
+    public static Packet getShowExpGain(int gain, int equip, int party, boolean inChat, boolean white) {
+        return getShowExpGain(gain, equip, party, 0, 0, 0, 0, inChat, white);
     }
 
     /**
