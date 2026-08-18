@@ -44,6 +44,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -51,6 +52,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -62,13 +64,60 @@ public final class QuestHelpService {
     private static final Logger log = LoggerFactory.getLogger(QuestHelpService.class);
     private static final QuestHelpService instance = new QuestHelpService();
 
+    public static final int DEFAULT_TOWN_PRICE = 5000;
+
+    /**
+     * 万能传送已配置的主城基准传送价格字典
+     */
+    public static final Map<Integer, Integer> TOWN_PRICES = Map.ofEntries(
+            Map.entry(104000000, 500),   // 明珠港
+            Map.entry(100000000, 800),   // 射手村
+            Map.entry(101000000, 800),   // 魔法密林
+            Map.entry(102000000, 800),   // 勇士部落
+            Map.entry(103000000, 800),   // 废弃都市
+            Map.entry(120000000, 800),   // 诺特勒斯号码头
+            Map.entry(105040300, 1000),  // 林中之城
+            Map.entry(140000000, 1000),  // 里恩
+            Map.entry(200000000, 1000),  // 天空之城
+            Map.entry(211000000, 5000),  // 冰峰雪域
+            Map.entry(230000000, 1000),  // 水下世界
+            Map.entry(222000000, 1000),  // 童话村
+            Map.entry(220000000, 5000),  // 玩具城
+            Map.entry(701000000, 5000),  // 东方神州
+            Map.entry(250000000, 5000),  // 武陵
+            Map.entry(702000000, 1000),  // 少林寺
+            Map.entry(260000000, 500),   // 阿里安特
+            Map.entry(600000000, 500),   // 新叶城
+            Map.entry(240000000, 5000),  // 神木村
+            Map.entry(261000000, 1000),  // 马加提亚
+            Map.entry(221000000, 1000),  // 地球防御本部
+            Map.entry(251000000, 1000),  // 百草堂
+            Map.entry(701000200, 10000), // 上海豫园
+            Map.entry(550000000, 10000), // 吉隆大都市
+            Map.entry(130000000, 1000),  // 圣地
+            Map.entry(551000000, 1000),  // 甘榜村
+            Map.entry(801000000, 1000),  // 昭和村
+            Map.entry(540010000, 1000),  // 新加坡机场
+            Map.entry(541000000, 1000),  // 新加坡码头
+            Map.entry(300000000, 1000),  // 艾林森林
+            Map.entry(270000100, 10000), // 时间神殿
+            Map.entry(702100000, 10000), // 藏经阁
+            Map.entry(800000000, 10000), // 古代神社
+            Map.entry(130000200, 10000), // 圣地岔路
+            Map.entry(925020000, 1000),  // 武陵道场入口
+            Map.entry(930000000, 5000),  // 毒雾森林
+            Map.entry(930000010, 1000)   // 森林入口
+    );
+
     private final Map<Integer, Set<Integer>> mobToMaps = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> npcToMaps = new ConcurrentHashMap<>();
+    private final Map<Integer, Set<Integer>> mapGraph = new ConcurrentHashMap<>();
     private final Map<String, Set<Integer>> nameToMobIds = new ConcurrentHashMap<>();
     private final Map<Integer, String> mobNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> npcNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> itemNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, MapLocation> mapLocationCache = new ConcurrentHashMap<>();
+    private final Map<Integer, WarpCostInfo> warpCostCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<MapLocation>> mobMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<MapLocation>> npcMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
@@ -160,28 +209,38 @@ public final class QuestHelpService {
         }
 
         Data lifeData = mapData.getChildByPath("life");
-        if (lifeData == null) {
-            return;
-        }
+        if (lifeData != null) {
+            for (Data child : lifeData.getChildren()) {
+                String type = DataTool.getString("type", child, "");
+                int lifeId = DataTool.getInt("id", child, -1);
+                if (lifeId <= 0) {
+                    String idStr = DataTool.getString("id", child, null);
+                    if (idStr != null) {
+                        try {
+                            lifeId = Integer.parseInt(idStr);
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
 
-        for (Data child : lifeData.getChildren()) {
-            String type = DataTool.getString("type", child, "");
-            int lifeId = DataTool.getInt("id", child, -1);
-            if (lifeId <= 0) {
-                String idStr = DataTool.getString("id", child, null);
-                if (idStr != null) {
-                    try {
-                        lifeId = Integer.parseInt(idStr);
-                    } catch (NumberFormatException ignored) {
+                if (lifeId > 0) {
+                    if ("m".equalsIgnoreCase(type)) {
+                        mobToMaps.computeIfAbsent(lifeId, k -> ConcurrentHashMap.newKeySet()).add(mapId);
+                    } else if ("n".equalsIgnoreCase(type)) {
+                        npcToMaps.computeIfAbsent(lifeId, k -> ConcurrentHashMap.newKeySet()).add(mapId);
                     }
                 }
             }
+        }
 
-            if (lifeId > 0) {
-                if ("m".equalsIgnoreCase(type)) {
-                    mobToMaps.computeIfAbsent(lifeId, k -> ConcurrentHashMap.newKeySet()).add(mapId);
-                } else if ("n".equalsIgnoreCase(type)) {
-                    npcToMaps.computeIfAbsent(lifeId, k -> ConcurrentHashMap.newKeySet()).add(mapId);
+        // 解析传送门（Portal）连通拓扑图
+        Data portalData = mapData.getChildByPath("portal");
+        if (portalData != null) {
+            for (Data child : portalData.getChildren()) {
+                int tm = DataTool.getInt("tm", child, 999999999);
+                if (tm != 999999999 && tm != mapId && tm > 0) {
+                    mapGraph.computeIfAbsent(mapId, k -> ConcurrentHashMap.newKeySet()).add(tm);
+                    mapGraph.computeIfAbsent(tm, k -> ConcurrentHashMap.newKeySet()).add(mapId);
                 }
             }
         }
@@ -199,8 +258,83 @@ public final class QuestHelpService {
         return mapLocationCache.computeIfAbsent(mapId, id -> {
             String mapName = MapFactory.loadPlaceName(id);
             String streetName = MapFactory.loadStreetName(id);
-            return new MapLocation(id, mapName, streetName);
+            WarpCostInfo costInfo = calculateWarpCost(id);
+            return new MapLocation(id, mapName, streetName, costInfo.getTotalCost(), costInfo.getNearestTownName(), costInfo.getDistance());
         });
+    }
+
+    /**
+     * 计算目标地图的传送费用
+     * 规则：
+     * 1. 目标地图属于主城：费用为该主城基准价格（如射手村 800）；
+     * 2. 目标地图在野外：通过 BFS 拓扑寻路找到最近的主城 T 及传送点跳数 D（distance）；
+     *    费用 = basePrice + floor(basePrice * 0.5 * D)；
+     * 3. 无法连通任何主城（孤立/副本）：默认主城价格 5000 金币。
+     */
+    public WarpCostInfo calculateWarpCost(int targetMapId) {
+        ensureInitialized();
+        return warpCostCache.computeIfAbsent(targetMapId, mapId -> {
+            // 1. 若目标地图本身就是已定义主城
+            Integer townPrice = TOWN_PRICES.get(mapId);
+            if (townPrice != null) {
+                String townName = getTownNameSafely(mapId);
+                return new WarpCostInfo(mapId, mapId, townName, 0, townPrice, townPrice);
+            }
+
+            // 2. BFS 寻找距离最近的主城
+            Queue<Integer> queue = new ArrayDeque<>();
+            Map<Integer, Integer> visitedDist = new HashMap<>();
+            queue.add(mapId);
+            visitedDist.put(mapId, 0);
+
+            int foundTownId = -1;
+            int foundDist = -1;
+
+            while (!queue.isEmpty()) {
+                int curr = queue.poll();
+                int dist = visitedDist.get(curr);
+
+                if (curr != mapId && TOWN_PRICES.containsKey(curr)) {
+                    foundTownId = curr;
+                    foundDist = dist;
+                    break;
+                }
+
+                Set<Integer> neighbors = mapGraph.get(curr);
+                if (neighbors != null) {
+                    for (int next : neighbors) {
+                        if (!visitedDist.containsKey(next)) {
+                            visitedDist.put(next, dist + 1);
+                            queue.add(next);
+                        }
+                    }
+                }
+            }
+
+            if (foundTownId != -1) {
+                int basePrice = TOWN_PRICES.get(foundTownId);
+                String townName = getTownNameSafely(foundTownId);
+                int totalCost = basePrice + (int) Math.floor(basePrice * 0.5 * foundDist);
+                return new WarpCostInfo(mapId, foundTownId, townName, foundDist, basePrice, totalCost);
+            }
+
+            // 3. 孤立/未知主城：默认 5000 金币
+            return new WarpCostInfo(mapId, -1, "未知主城", 0, DEFAULT_TOWN_PRICE, DEFAULT_TOWN_PRICE);
+        });
+    }
+
+    private String getTownNameSafely(int mapId) {
+        try {
+            String townName = MapFactory.loadPlaceName(mapId);
+            if (townName == null || townName.isBlank()) {
+                townName = MapFactory.loadStreetName(mapId);
+            }
+            if (townName != null && !townName.isBlank()) {
+                return townName;
+            }
+        } catch (Throwable ignored) {
+        }
+        return "地图 " + mapId;
     }
 
     public List<MapLocation> getMapsForMob(int mobId) {
@@ -896,15 +1030,67 @@ public final class QuestHelpService {
         }
     }
 
+    public static class WarpCostInfo {
+        private final int mapId;
+        private final int nearestTownId;
+        private final String nearestTownName;
+        private final int distance;
+        private final int basePrice;
+        private final int totalCost;
+
+        public WarpCostInfo(int mapId, int nearestTownId, String nearestTownName, int distance, int basePrice, int totalCost) {
+            this.mapId = mapId;
+            this.nearestTownId = nearestTownId;
+            this.nearestTownName = nearestTownName != null ? nearestTownName : "";
+            this.distance = distance;
+            this.basePrice = basePrice;
+            this.totalCost = totalCost;
+        }
+
+        public int getMapId() {
+            return mapId;
+        }
+
+        public int getNearestTownId() {
+            return nearestTownId;
+        }
+
+        public String getNearestTownName() {
+            return nearestTownName;
+        }
+
+        public int getDistance() {
+            return distance;
+        }
+
+        public int getBasePrice() {
+            return basePrice;
+        }
+
+        public int getTotalCost() {
+            return totalCost;
+        }
+    }
+
     public static class MapLocation {
         private final int mapId;
         private final String mapName;
         private final String streetName;
+        private final int warpCost;
+        private final String nearestTownName;
+        private final int distance;
 
         public MapLocation(int mapId, String mapName, String streetName) {
+            this(mapId, mapName, streetName, 0, "", 0);
+        }
+
+        public MapLocation(int mapId, String mapName, String streetName, int warpCost, String nearestTownName, int distance) {
             this.mapId = mapId;
             this.mapName = mapName != null ? mapName : "";
             this.streetName = streetName != null ? streetName : "";
+            this.warpCost = warpCost;
+            this.nearestTownName = nearestTownName != null ? nearestTownName : "";
+            this.distance = distance;
         }
 
         public int getMapId() {
@@ -919,20 +1105,38 @@ public final class QuestHelpService {
             return streetName;
         }
 
+        public int getWarpCost() {
+            return warpCost;
+        }
+
+        public String getNearestTownName() {
+            return nearestTownName;
+        }
+
+        public int getDistance() {
+            return distance;
+        }
+
         public String getDisplayName() {
+            String baseDisplay;
             if (!streetName.isBlank() && !mapName.isBlank()) {
                 if (streetName.equals(mapName)) {
-                    return mapName + " (" + mapId + ")";
+                    baseDisplay = mapName + " (" + mapId + ")";
+                } else {
+                    baseDisplay = streetName + " - " + mapName + " (" + mapId + ")";
                 }
-                return streetName + " - " + mapName + " (" + mapId + ")";
+            } else if (!mapName.isBlank()) {
+                baseDisplay = mapName + " (" + mapId + ")";
+            } else if (!streetName.isBlank()) {
+                baseDisplay = streetName + " (" + mapId + ")";
+            } else {
+                baseDisplay = "地图 (" + mapId + ")";
             }
-            if (!mapName.isBlank()) {
-                return mapName + " (" + mapId + ")";
+
+            if (warpCost > 0) {
+                return baseDisplay + " [费用: " + warpCost + " 金币]";
             }
-            if (!streetName.isBlank()) {
-                return streetName + " (" + mapId + ")";
-            }
-            return "地图 (" + mapId + ")";
+            return baseDisplay;
         }
     }
 
