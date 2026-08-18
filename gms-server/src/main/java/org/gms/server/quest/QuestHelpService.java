@@ -73,6 +73,7 @@ public final class QuestHelpService {
     private final Map<Integer, List<MapLocation>> npcMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> regularMaterialCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Integer> materialUnitPriceCache = new ConcurrentHashMap<>();
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
@@ -515,15 +516,55 @@ public final class QuestHelpService {
     }
 
     /**
-     * 获取普通怪物材料的辅助系统出售单价（商店原价的 10 倍，最低 10 金币）
+     * 获取普通怪物材料的辅助系统出售单价（基于商店回收价、掉落怪物等级与爆率稀缺度综合计算）
+     * 公式：
+     * BasePrice = wholePrice * 20 + mobLevel * 30
+     * RarityFactor = clamp((500,000 / chance)^0.90, 0.75, 10.0)
+     * UnitPrice = max(20, round(BasePrice * RarityFactor))
      */
     public int getMaterialUnitPrice(int itemId) {
-        ItemInformationProvider ii = ItemInformationProvider.getInstance();
-        int basePrice = ii.getWholePrice(itemId);
-        if (basePrice <= 0) {
-            basePrice = 1;
-        }
-        return basePrice * 10;
+        return materialUnitPriceCache.computeIfAbsent(itemId, id -> {
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            int wholePrice = ii.getWholePrice(id);
+            if (wholePrice <= 0) {
+                wholePrice = 1;
+            }
+
+            int bestMobLevel = 10;
+            int bestChance = 500000; // 默认 50% 爆率
+            boolean foundMob = false;
+
+            List<DropMobInfo> dropMobs = getDropMobsForItem(id);
+            if (dropMobs != null && !dropMobs.isEmpty()) {
+                for (DropMobInfo mob : dropMobs) {
+                    if (!mob.isBoss()) {
+                        int mobId = mob.getMobId();
+                        int chance = mob.getChance();
+                        int mobLevel = LifeFactory.getMonsterLevel(mobId);
+                        if (mobLevel <= 0) {
+                            mobLevel = 10;
+                        }
+                        if (!foundMob || chance > bestChance) {
+                            bestChance = Math.max(1, chance);
+                            bestMobLevel = Math.max(1, mobLevel);
+                            foundMob = true;
+                        }
+                    }
+                }
+            }
+
+            double basePrice = (wholePrice * 20.0) + (bestMobLevel * 30.0);
+            double ratio = 500000.0 / bestChance;
+            double rarityFactor = Math.pow(ratio, 0.90);
+            if (rarityFactor < 0.75) {
+                rarityFactor = 0.75;
+            } else if (rarityFactor > 10.0) {
+                rarityFactor = 10.0;
+            }
+
+            int unitPrice = (int) Math.round(basePrice * rarityFactor);
+            return Math.max(20, unitPrice);
+        });
     }
 
     /**

@@ -80,8 +80,8 @@ function showMainMenu() {
 
     var text = "\t\t\t\t#e#b【 任务辅助 - 任务分类 】#k#n\r\n\r\n";
     text += "请选择您要查看的任务分类：\r\n\r\n";
-    text += "#L1##e#g【 可交付任务 】#k#n (共 #b" + completable.size() + "#k 个任务已达成全部条件)#l\r\n";
-    text += "#L2##e#d【 进行中任务 】#k#n (共 #b" + inProgress.size() + "#k 个任务尚未达成目标)#l\r\n\r\n";
+    text += "#L1##e#b【 可交付任务 】#k#n (共 #d" + completable.size() + "#k 个任务已达成全部条件)#l\r\n";
+    text += "#L2##e#d【 进行中任务 】#k#n (共 #d" + inProgress.size() + "#k 个任务尚未达成目标)#l\r\n\r\n";
     text += "#L999990##b[返回昨日小睡主菜单]#k#l";
 
     cm.sendSimple(text);
@@ -135,7 +135,7 @@ function showQuestList() {
 
     for (var i = 0; i < quests.size(); i++) {
         var q = quests.get(i);
-        var tag = q.isCanComplete() ? " #g[可交付]#k" : " #d[进行中]#k";
+        var tag = q.isCanComplete() ? " #b[可交付]#k" : " #d[进行中]#k";
         text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k" + tag + "#l\r\n";
     }
 
@@ -180,7 +180,7 @@ function showQuestDetail(questId) {
     }
 
     var statusHeader = currentDetail.isCanComplete() ?
-            "#e#g【状态：已集齐全部条件，可直接前往交付！】#k#n" :
+            "#e#b【状态：已集齐全部条件，可直接前往交付！】#k#n" :
             "#e#d【状态：进行中，需达成以下目标】#k#n";
 
     text += "#e#b【任务】" + currentDetail.getQuestName() + " (ID: " + currentDetail.getQuestId() + ")#k#n\r\n";
@@ -205,7 +205,7 @@ function showQuestDetail(questId) {
     }
 
     if (hasDeliverableIncomplete) {
-        text += "#L10000##k【 #g★ 一键购买补齐本任务全部普通怪物材料#k 】 #d(共需: " + totalCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通怪物材料#k 】 #d(共需: " + totalCost + " 金币)#k#l\r\n\r\n";
     }
 
     var hasContent = false;
@@ -216,7 +216,7 @@ function showQuestDetail(questId) {
         text += "#e【 击杀怪物目标 】#n\r\n";
         for (var i = 0; i < mobObjs.size(); i++) {
             var mob = mobObjs.get(i);
-            var statusTag = mob.isCompleted() ? " #g[已达成]#k" : " #r[未完成]#k";
+            var statusTag = mob.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
             if (mob.isBoss()) {
                 text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #d[Boss怪物，已关闭直达传送]#k\r\n";
             } else {
@@ -232,14 +232,14 @@ function showQuestDetail(questId) {
         text += "#e【 收集道具目标 】#n\r\n";
         for (var i = 0; i < itemObjs.size(); i++) {
             var item = itemObjs.get(i);
-            var statusTag = item.isCompleted() ? " #g[已达成]#k" : " #r[未完成]#k";
+            var statusTag = item.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
             var diff = item.getRequiredCount() - item.getCurrentCount();
 
             if (item.isCompleted()) {
                 text += " 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + "\r\n";
             } else if (item.isDeliverable()) {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
-                text += "#L" + (250000 + i) + "#   #g└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                text += "#L" + (250000 + i) + "#   #d└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币]#k#l\r\n";
             } else {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[查看掉落/传送]#k #r(特殊/剧情道具需手动获取)#k#l\r\n";
             }
@@ -284,7 +284,7 @@ function handleDetailSelection(selection) {
     if (selection === 10000) {
         var service = cm.getQuestHelp();
         var res = service.deliverAllRegularMaterials(cm.getPlayer(), selectedQuestId);
-        pendingNotice = res.isSuccess() ? "#g" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
+        pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
         status = 1;
         action(1, 0, selectedQuestId);
         return;
@@ -296,7 +296,7 @@ function handleDetailSelection(selection) {
         var item = currentDetail.getItemObjectives().get(index);
         var service = cm.getQuestHelp();
         var res = service.deliverQuestMaterial(cm.getPlayer(), selectedQuestId, item.getItemId());
-        pendingNotice = res.isSuccess() ? "#g" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
+        pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
         status = 1;
         action(1, 0, selectedQuestId);
         return;
