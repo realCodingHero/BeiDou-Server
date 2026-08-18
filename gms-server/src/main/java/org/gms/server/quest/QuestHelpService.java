@@ -401,6 +401,69 @@ public final class QuestHelpService {
         return q.canComplete(player, npcId);
     }
 
+    /**
+     * 判断任务当前未达成的所有交付条件是否均可通过向辅助商店购买普通材料补齐解锁（可购买交付）
+     * 满足条件：
+     * 1. 任务当前尚未满足全部直接交付条件（非 isCanComplete）；
+     * 2. 怪物击杀目标已全部完成（无剩余待杀怪物）；
+     * 3. 物品收集目标中，所有未集齐的道具均属于普通怪物材料（isRegularMonsterMaterial），无未完成的特殊/剧情/Boss专属道具；
+     * 4. 至少存在一项未集齐的可购买普通怪物材料。
+     */
+    public boolean isQuestPurchasableCompletable(Character player, Quest q) {
+        if (player == null || q == null) {
+            return false;
+        }
+        if (isQuestCompletable(player, q)) {
+            return false;
+        }
+        QuestStatus qs = player.getQuest(q);
+        if (qs == null || !QuestStatus.Status.STARTED.equals(qs.getStatus())) {
+            return false;
+        }
+
+        // 1. 击杀目标必须全部达成
+        Map<Integer, Integer> reqMobs = new HashMap<>(q.getRequiredMobs());
+        if (reqMobs.isEmpty() && !q.getRelevantMobs().isEmpty()) {
+            for (int mobId : q.getRelevantMobs()) {
+                int count = q.getMobAmountNeeded(mobId);
+                if (count > 0) {
+                    reqMobs.put(mobId, count);
+                }
+            }
+        }
+        for (Map.Entry<Integer, Integer> entry : reqMobs.entrySet()) {
+            int currentKills = parseProgress(qs.getProgress(entry.getKey()));
+            if (currentKills < entry.getValue()) {
+                return false;
+            }
+        }
+
+        // 2. 道具目标：所有未集齐的道具必须全是可购买材料
+        Map<Integer, Integer> reqItems = q.getRequiredItems();
+        if (reqItems == null || reqItems.isEmpty()) {
+            return false;
+        }
+
+        boolean hasIncompletePurchasable = false;
+        for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
+            int itemId = entry.getKey();
+            int reqCount = entry.getValue();
+            InventoryType iType = ItemConstants.getInventoryType(itemId);
+            int currentCount = 0;
+            if (iType != null && !iType.equals(InventoryType.UNDEFINED) && player.getInventory(iType) != null) {
+                currentCount = player.getInventory(iType).countById(itemId);
+            }
+            if (currentCount < reqCount) {
+                if (!isRegularMonsterMaterial(itemId)) {
+                    return false; // 有未达成的不可购买道具
+                }
+                hasIncompletePurchasable = true;
+            }
+        }
+
+        return hasIncompletePurchasable;
+    }
+
     public List<QuestSummary> getStartedQuestSummaries(Character player) {
         if (player == null) {
             return Collections.emptyList();
@@ -414,9 +477,16 @@ public final class QuestHelpService {
                 name = "任务 " + q.getId();
             }
             boolean canComplete = isQuestCompletable(player, q);
-            list.add(new QuestSummary(q.getId(), name, canComplete));
+            boolean purchasableComplete = isQuestPurchasableCompletable(player, q);
+            long lastModifiedTime = qs.getLastModifiedTime();
+            list.add(new QuestSummary(q.getId(), name, canComplete, purchasableComplete, lastModifiedTime));
         }
-        list.sort(Comparator.comparingInt(QuestSummary::getQuestId));
+        // 根据最近状态变更/领取时间倒序排序（最新在前），时间相同时按任务ID倒序
+        list.sort((a, b) -> {
+            int cmp = Long.compare(b.getLastModifiedTime(), a.getLastModifiedTime());
+            if (cmp != 0) return cmp;
+            return Integer.compare(b.getQuestId(), a.getQuestId());
+        });
         return Collections.unmodifiableList(list);
     }
 
@@ -458,6 +528,7 @@ public final class QuestHelpService {
             questName = "任务 " + questId;
         }
         boolean canComplete = isQuestCompletable(player, q);
+        boolean purchasableComplete = isQuestPurchasableCompletable(player, q);
 
         // 1. NPC Info
         int startNpcId = q.getNpcRequirement(false);
@@ -512,7 +583,7 @@ public final class QuestHelpService {
         }
         itemObjectives.sort(Comparator.comparingInt(ItemObjective::getItemId));
 
-        return new QuestDetailInfo(questId, questName, canComplete, startNpc, completeNpc, mobObjectives, itemObjectives);
+        return new QuestDetailInfo(questId, questName, canComplete, purchasableComplete, startNpc, completeNpc, mobObjectives, itemObjectives);
     }
 
     /**
@@ -793,11 +864,15 @@ public final class QuestHelpService {
         private final int questId;
         private final String questName;
         private final boolean canComplete;
+        private final boolean purchasableComplete;
+        private final long lastModifiedTime;
 
-        public QuestSummary(int questId, String questName, boolean canComplete) {
+        public QuestSummary(int questId, String questName, boolean canComplete, boolean purchasableComplete, long lastModifiedTime) {
             this.questId = questId;
             this.questName = questName;
             this.canComplete = canComplete;
+            this.purchasableComplete = purchasableComplete;
+            this.lastModifiedTime = lastModifiedTime;
         }
 
         public int getQuestId() {
@@ -810,6 +885,14 @@ public final class QuestHelpService {
 
         public boolean isCanComplete() {
             return canComplete;
+        }
+
+        public boolean isPurchasableComplete() {
+            return purchasableComplete;
+        }
+
+        public long getLastModifiedTime() {
+            return lastModifiedTime;
         }
     }
 
@@ -1033,16 +1116,19 @@ public final class QuestHelpService {
         private final int questId;
         private final String questName;
         private final boolean canComplete;
+        private final boolean purchasableComplete;
         private final NpcLocationInfo startNpc;
         private final NpcLocationInfo completeNpc;
         private final List<MobObjective> mobObjectives;
         private final List<ItemObjective> itemObjectives;
 
-        public QuestDetailInfo(int questId, String questName, boolean canComplete, NpcLocationInfo startNpc, NpcLocationInfo completeNpc,
+        public QuestDetailInfo(int questId, String questName, boolean canComplete, boolean purchasableComplete,
+                               NpcLocationInfo startNpc, NpcLocationInfo completeNpc,
                                List<MobObjective> mobObjectives, List<ItemObjective> itemObjectives) {
             this.questId = questId;
             this.questName = questName;
             this.canComplete = canComplete;
+            this.purchasableComplete = purchasableComplete;
             this.startNpc = startNpc;
             this.completeNpc = completeNpc;
             this.mobObjectives = mobObjectives != null ? mobObjectives : Collections.emptyList();
@@ -1059,6 +1145,10 @@ public final class QuestHelpService {
 
         public boolean isCanComplete() {
             return canComplete;
+        }
+
+        public boolean isPurchasableComplete() {
+            return purchasableComplete;
         }
 
         public NpcLocationInfo getStartNpc() {

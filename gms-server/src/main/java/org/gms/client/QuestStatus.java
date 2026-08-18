@@ -66,6 +66,7 @@ public class QuestStatus {
     private final List<Integer> medalProgress = new LinkedList<>();
     private int npc;
     private long completionTime, expirationTime;
+    private long lastModifiedTime = System.currentTimeMillis();
     private int forfeited = 0, completed = 0;
     private String customData;
 
@@ -73,6 +74,7 @@ public class QuestStatus {
         this.questID = quest.getId();
         this.setStatus(status);
         this.completionTime = System.currentTimeMillis();
+        this.lastModifiedTime = this.completionTime;
         this.expirationTime = 0;
         //this.updated = true;
         if (status == Status.STARTED) {
@@ -85,6 +87,7 @@ public class QuestStatus {
         this.setStatus(status);
         this.setNpc(npc);
         this.completionTime = System.currentTimeMillis();
+        this.lastModifiedTime = this.completionTime;
         this.expirationTime = 0;
         //this.updated = true;
         if (status == Status.STARTED) {
@@ -106,6 +109,7 @@ public class QuestStatus {
 
     public final void setStatus(Status status) {
         this.status = status;
+        this.lastModifiedTime = System.currentTimeMillis();
     }
     
     /*
@@ -167,12 +171,14 @@ public class QuestStatus {
 
         String str = StringUtil.getLeftPaddedStr(Integer.toString(++current), '0', 3);
         progress.put(id, str);
+        this.lastModifiedTime = System.currentTimeMillis();
         //this.setUpdated();
         return true;
     }
 
     public void setProgress(int id, String pr) {
         progress.put(id, pr);
+        this.lastModifiedTime = System.currentTimeMillis();
         //this.setUpdated();
     }
 
@@ -230,6 +236,17 @@ public class QuestStatus {
 
     public void setCompletionTime(long completionTime) {
         this.completionTime = completionTime;
+        if (this.lastModifiedTime == 0 || this.lastModifiedTime < completionTime) {
+            this.lastModifiedTime = completionTime;
+        }
+    }
+
+    public long getLastModifiedTime() {
+        return lastModifiedTime > 0 ? lastModifiedTime : completionTime;
+    }
+
+    public void setLastModifiedTime(long lastModifiedTime) {
+        this.lastModifiedTime = lastModifiedTime;
     }
 
     public long getExpirationTime() {

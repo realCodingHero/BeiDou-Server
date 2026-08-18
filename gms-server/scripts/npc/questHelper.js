@@ -135,7 +135,14 @@ function showQuestList() {
 
     for (var i = 0; i < quests.size(); i++) {
         var q = quests.get(i);
-        var tag = q.isCanComplete() ? " #b[可交付]#k" : " #d[进行中]#k";
+        var tag = "";
+        if (q.isCanComplete()) {
+            tag = " #b[可交付]#k";
+        } else if (q.isPurchasableComplete()) {
+            tag = " #d[可购买交付]#k";
+        } else {
+            tag = " #d[进行中]#k";
+        }
         text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k" + tag + "#l\r\n";
     }
 
@@ -179,9 +186,14 @@ function showQuestDetail(questId) {
         pendingNotice = null;
     }
 
-    var statusHeader = currentDetail.isCanComplete() ?
-            "#e#b【状态：已集齐全部条件，可直接前往交付！】#k#n" :
-            "#e#d【状态：进行中，需达成以下目标】#k#n";
+    var statusHeader = "";
+    if (currentDetail.isCanComplete()) {
+        statusHeader = "#e#b【状态：已集齐全部条件，可直接前往交付！】#k#n";
+    } else if (currentDetail.isPurchasableComplete()) {
+        statusHeader = "#e#d【状态：所有缺失材料均可购买补齐，补齐后即可交付！】#k#n";
+    } else {
+        statusHeader = "#e#d【状态：进行中，需达成以下目标】#k#n";
+    }
 
     text += "#e#b【任务】" + currentDetail.getQuestName() + " (ID: " + currentDetail.getQuestId() + ")#k#n\r\n";
     text += statusHeader + "\r\n\r\n";
