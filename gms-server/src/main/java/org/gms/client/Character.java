@@ -2936,22 +2936,42 @@ public class Character extends AbstractCharacterObject {
     }
 
     public void gainExp(int gain, int party, boolean show, boolean inChat, boolean white) {
+        gainExp(gain, 0, party, 0, 0, 0, show, inChat, white);
+    }
+
+    public void gainExp(int gain, int eventBonus, int party, int weddingBonus, int internetCafe, int rainbowWeek, boolean show, boolean inChat, boolean white) {
         if (hasDisease(Disease.CURSE)) {
             gain *= 0.5;
+            eventBonus *= 0.5;
             party *= 0.5;
+            weddingBonus *= 0.5;
+            internetCafe *= 0.5;
+            rainbowWeek *= 0.5;
         }
 
         if (gain < 0) {
-            gain = Integer.MAX_VALUE;   // integer overflow, heh.
+            gain = Integer.MAX_VALUE; // integer overflow, heh.
         }
-
+        if (eventBonus < 0) {
+            eventBonus = 0;
+        }
         if (party < 0) {
-            party = Integer.MAX_VALUE;  // integer overflow, heh.
+            party = Integer.MAX_VALUE; // integer overflow, heh.
+        }
+        if (weddingBonus < 0) {
+            weddingBonus = 0;
+        }
+        if (internetCafe < 0) {
+            internetCafe = 0;
+        }
+        if (rainbowWeek < 0) {
+            rainbowWeek = 0;
         }
 
-        int equip = (int) Math.min((long) (gain / 10) * pendantExp, Integer.MAX_VALUE);
+        long baseForPendant = (long) gain + eventBonus;
+        int equip = (int) Math.min((baseForPendant / 10) * pendantExp, Integer.MAX_VALUE);
 
-        gainExpInternal(gain, equip, party, show, inChat, white);
+        gainExpInternal(gain, equip, party, eventBonus, weddingBonus, internetCafe, rainbowWeek, show, inChat, white);
     }
 
     public void loseExp(int loss, boolean show, boolean inChat) {
@@ -2959,26 +2979,32 @@ public class Character extends AbstractCharacterObject {
     }
 
     public void loseExp(int loss, boolean show, boolean inChat, boolean white) {
-        gainExpInternal(-loss, 0, 0, show, inChat, white);
+        gainExpInternal(-loss, 0, 0, 0, 0, 0, 0, show, inChat, white);
     }
 
-    private void announceExpGain(long gain, int equip, int party, boolean inChat, boolean white) {
+    private void announceExpGain(long gain, int equip, int party, int eventBonus, int weddingBonus, int internetCafe, int rainbowWeek, boolean inChat, boolean white) {
         gain = Math.min(gain, Integer.MAX_VALUE);
         if (gain == 0) {
-            if (party == 0) {
+            if (party == 0 && eventBonus == 0 && weddingBonus == 0 && internetCafe == 0 && rainbowWeek == 0) {
                 return;
             }
 
-            gain = party;
-            party = 0;
-            white = false;
+            if (party > 0) {
+                gain = party;
+                party = 0;
+                white = false;
+            } else if (eventBonus > 0) {
+                gain = eventBonus;
+                eventBonus = 0;
+                white = false;
+            }
         }
 
-        sendPacket(PacketCreator.getShowExpGain((int) gain, equip, party, inChat, white));
+        sendPacket(PacketCreator.getShowExpGain((int) gain, equip, party, eventBonus, weddingBonus, internetCafe, rainbowWeek, inChat, white));
     }
 
-    private synchronized void gainExpInternal(long gain, int equip, int party, boolean show, boolean inChat, boolean white) {   // need of method synchonization here detected thanks to MedicOP
-        long total = Math.max(gain + equip + party, -exp.get());
+    private synchronized void gainExpInternal(long gain, int equip, int party, int eventBonus, int weddingBonus, int internetCafe, int rainbowWeek, boolean show, boolean inChat, boolean white) { // need of method synchonization here detected thanks to MedicOP
+        long total = Math.max(gain + equip + party + eventBonus + weddingBonus + internetCafe + rainbowWeek, -exp.get());
 
         if (level < getMaxLevel() && (allowExpGain || this.getEventInstance() != null)) {
             long leftover = 0;
@@ -2991,7 +3017,7 @@ public class Character extends AbstractCharacterObject {
             updateSingleStat(Stat.EXP, exp.addAndGet((int) total));
             totalExpGained += total;
             if (show) {
-                announceExpGain(gain, equip, party, inChat, white);
+                announceExpGain(gain, equip, party, eventBonus, weddingBonus, internetCafe, rainbowWeek, inChat, white);
             }
             while (exp.get() >= ExpTable.getExpNeededForLevel(level)) {
                 levelUp(true);
@@ -3016,7 +3042,7 @@ public class Character extends AbstractCharacterObject {
             }
 
             if (leftover > 0) {
-                gainExpInternal(leftover, equip, party, false, inChat, white);
+                gainExpInternal(leftover, 0, 0, 0, 0, 0, 0, false, inChat, white);
             } else {
                 lastExpGainTime = System.currentTimeMillis();
 
