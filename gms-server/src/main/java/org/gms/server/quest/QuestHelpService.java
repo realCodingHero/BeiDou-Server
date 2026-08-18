@@ -505,8 +505,9 @@ public final class QuestHelpService {
                 currentCount = player.getInventory(iType).countById(itemId);
             }
             boolean deliverable = isRegularMonsterMaterial(itemId);
+            int unitPrice = deliverable ? getMaterialUnitPrice(itemId) : 0;
             List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
-            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, dropMobs));
+            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, unitPrice, dropMobs));
         }
         itemObjectives.sort(Comparator.comparingInt(ItemObjective::getItemId));
 
@@ -514,7 +515,19 @@ public final class QuestHelpService {
     }
 
     /**
-     * 单独补齐某一项任务普通怪物材料（带背包空间校验）
+     * 获取普通怪物材料的辅助系统出售单价（商店原价的 10 倍，最低 10 金币）
+     */
+    public int getMaterialUnitPrice(int itemId) {
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        int basePrice = ii.getWholePrice(itemId);
+        if (basePrice <= 0) {
+            basePrice = 1;
+        }
+        return basePrice * 10;
+    }
+
+    /**
+     * 单独向玩家出售并补齐某一项任务普通怪物材料（带金币扣除与背包空间校验）
      */
     public DeliveryResult deliverQuestMaterial(Character player, int questId, int itemId) {
         if (player == null || player.getClient() == null) {
@@ -533,7 +546,7 @@ public final class QuestHelpService {
             return new DeliveryResult(false, "该任务不需要此道具。", 0);
         }
         if (!isRegularMonsterMaterial(itemId)) {
-            return new DeliveryResult(false, "该道具属于特殊/剧情/Boss掉落道具，不支持快捷发放，请在游戏中探索获取！", 0);
+            return new DeliveryResult(false, "该道具属于特殊/剧情/Boss掉落道具，不支持快捷购买，请在游戏中探索获取！", 0);
         }
 
         InventoryType iType = ItemConstants.getInventoryType(itemId);
@@ -543,7 +556,13 @@ public final class QuestHelpService {
         }
         int neededCount = reqCount - currentCount;
         if (neededCount <= 0) {
-            return new DeliveryResult(true, "您背包中已有足够的 【" + getItemName(itemId) + "】（" + currentCount + "/" + reqCount + "），无需补齐！", 0);
+            return new DeliveryResult(true, "您背包中已有足够的 【" + getItemName(itemId) + "】（" + currentCount + "/" + reqCount + "），无需购买！", 0);
+        }
+
+        int unitPrice = getMaterialUnitPrice(itemId);
+        long totalCost = (long) unitPrice * neededCount;
+        if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
+            return new DeliveryResult(false, "您的金币不足！购买 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + " 共需 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
         }
 
         // 严格校验背包空间
@@ -552,16 +571,19 @@ public final class QuestHelpService {
             return new DeliveryResult(false, "您的【" + invName + "】背包空间不足，请清理出至少 1 个空闲格子后再试！", 0);
         }
 
-        boolean added = org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) neededCount, "任务辅助补齐普通材料", -1);
+        player.gainMeso(-(int) totalCost, true, false, true);
+        boolean added = org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) neededCount, "任务辅助购买普通材料", -1);
         if (!added) {
-            return new DeliveryResult(false, "发放道具失败，请检查背包空间后重试。", 0);
+            // 回滚退还金币
+            player.gainMeso((int) totalCost, true, false, true);
+            return new DeliveryResult(false, "发放道具失败，已退还金币，请检查背包空间后重试。", 0);
         }
 
-        return new DeliveryResult(true, "已成功为您补齐 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + "！", neededCount);
+        return new DeliveryResult(true, "已扣除 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），成功为您购买补齐 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + "！", neededCount);
     }
 
     /**
-     * 一键补齐当前任务所有符合条件的普通怪物材料（带渐进式背包空间校验）
+     * 一键向玩家出售并补齐当前任务所有符合条件的普通怪物材料（带总金币校验与渐进式背包空间校验）
      */
     public DeliveryResult deliverAllRegularMaterials(Character player, int questId) {
         if (player == null || player.getClient() == null) {
@@ -605,15 +627,27 @@ public final class QuestHelpService {
         }
 
         if (deliverableItemTypes == 0) {
-            return new DeliveryResult(false, "该任务所需道具均为特殊/剧情/Boss道具，不支持快捷发放，需手动探索获取！", 0);
+            return new DeliveryResult(false, "该任务所需道具均为特殊/剧情/Boss道具，不支持快捷购买，需手动探索获取！", 0);
         }
 
         if (toDeliver.isEmpty()) {
-            String msg = "该任务所需的所有普通怪物材料您已全部集齐！";
+            String msg = "该任务所需的所有普通怪物材料您已全部集齐，无需购买！";
             if (restrictedItemTypes > 0) {
                 msg += "\r\n#r注：尚有 " + restrictedItemTypes + " 种特殊/剧情道具需手动探索获取。#k";
             }
             return new DeliveryResult(true, msg, 0);
+        }
+
+        long totalCost = 0L;
+        for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
+            int itemId = entry.getKey();
+            int qty = entry.getValue();
+            int unitPrice = getMaterialUnitPrice(itemId);
+            totalCost += (long) unitPrice * qty;
+        }
+
+        if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
+            return new DeliveryResult(false, "您的金币不足！一键购买本任务全部普通材料共需 #r" + totalCost + "#k 金币，您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
         }
 
         // 渐进式多物品背包空间模拟校验，按各个背包分类分别跟踪所需空闲槽位
@@ -630,20 +664,24 @@ public final class QuestHelpService {
                     player.getClient(), itemId, qty, "", simulatedUsedSlots[typeIdx], false);
             if (result < 0) {
                 String invName = (iType != null && iType.getName() != null) ? iType.getName() : "对应";
-                return new DeliveryResult(false, "您的【" + invName + "】背包空间不足以容纳全部补齐材料，请清理出更多空闲格子后再试！", 0);
+                return new DeliveryResult(false, "您的【" + invName + "】背包空间不足以容纳全部购买材料，请清理出更多空闲格子后再试！", 0);
             }
             simulatedUsedSlots[typeIdx] = result;
         }
 
-        // 安全发放全部材料
+        // 扣除金币与安全发放全部材料
+        player.gainMeso(-(int) totalCost, true, false, true);
         int totalCount = 0;
-        StringBuilder sb = new StringBuilder("已成功为您补齐以下普通怪物材料：\r\n\r\n");
+        StringBuilder sb = new StringBuilder("已扣除 #r").append(totalCost).append("#k 金币，成功为您购买并补齐以下普通怪物材料：\r\n\r\n");
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
-            org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助补齐普通材料", -1);
+            int unitPrice = getMaterialUnitPrice(itemId);
+            long itemCost = (long) unitPrice * qty;
+            org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助购买普通材料", -1);
             totalCount += qty;
-            sb.append("#v").append(itemId).append("# 【#b").append(getItemName(itemId)).append("#k】 x").append(qty).append("\r\n");
+            sb.append("#v").append(itemId).append("# 【#b").append(getItemName(itemId)).append("#k】 x").append(qty)
+              .append(" (单价: ").append(unitPrice).append(" 金币, 小计: ").append(itemCost).append(" 金币)\r\n");
         }
 
         if (restrictedItemTypes > 0) {
@@ -868,14 +906,18 @@ public final class QuestHelpService {
         private final int currentCount;
         private final int requiredCount;
         private final boolean deliverable;
+        private final int unitPrice;
+        private final long totalPrice;
         private final List<DropMobInfo> dropMobs;
 
-        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, List<DropMobInfo> dropMobs) {
+        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, int unitPrice, List<DropMobInfo> dropMobs) {
             this.itemId = itemId;
             this.itemName = itemName;
             this.currentCount = currentCount;
             this.requiredCount = requiredCount;
             this.deliverable = deliverable;
+            this.unitPrice = unitPrice;
+            this.totalPrice = (long) unitPrice * Math.max(0, requiredCount - currentCount);
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
         }
 
@@ -897,6 +939,14 @@ public final class QuestHelpService {
 
         public boolean isDeliverable() {
             return deliverable;
+        }
+
+        public int getUnitPrice() {
+            return unitPrice;
+        }
+
+        public long getTotalPrice() {
+            return totalPrice;
         }
 
         public boolean isCompleted() {
@@ -984,6 +1034,16 @@ public final class QuestHelpService {
 
         public List<ItemObjective> getItemObjectives() {
             return itemObjectives;
+        }
+
+        public long getTotalRegularMaterialsCost() {
+            long total = 0;
+            for (ItemObjective obj : itemObjectives) {
+                if (obj.isDeliverable() && !obj.isCompleted()) {
+                    total += obj.getTotalPrice();
+                }
+            }
+            return total;
         }
     }
 }
