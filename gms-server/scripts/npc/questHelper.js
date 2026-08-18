@@ -193,6 +193,7 @@ function showQuestDetail(questId) {
 
     // 检查是否有可补齐的普通材料
     var hasDeliverableIncomplete = false;
+    var totalCost = currentDetail.getTotalRegularMaterialsCost();
     if (itemObjs && itemObjs.size() > 0) {
         for (var i = 0; i < itemObjs.size(); i++) {
             var item = itemObjs.get(i);
@@ -204,7 +205,7 @@ function showQuestDetail(questId) {
     }
 
     if (hasDeliverableIncomplete) {
-        text += "#L10000##e#g【 ★ 一键补齐本任务全部普通怪物材料 】#k#n#l\r\n\r\n";
+        text += "#L10000##k【 #g★ 一键购买补齐本任务全部普通怪物材料#k 】 #d(共需: " + totalCost + " 金币)#k#l\r\n\r\n";
     }
 
     var hasContent = false;
@@ -238,7 +239,7 @@ function showQuestDetail(questId) {
                 text += " 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + "\r\n";
             } else if (item.isDeliverable()) {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
-                text += "#L" + (250000 + i) + "#   #g└─ [一键补齐该材料 (缺 " + diff + " 个)]#k#l\r\n";
+                text += "#L" + (250000 + i) + "#   #g└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币]#k#l\r\n";
             } else {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[查看掉落/传送]#k #r(特殊/剧情道具需手动获取)#k#l\r\n";
             }
