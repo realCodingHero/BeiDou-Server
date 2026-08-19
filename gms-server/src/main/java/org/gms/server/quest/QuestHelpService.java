@@ -1057,8 +1057,10 @@ public final class QuestHelpService {
             int currentKills = parseProgress(qs.getProgress(mobId));
             boolean isBoss = MonsterInformationProvider.getInstance().isBoss(mobId);
             long accountKills = isBoss ? 0L : getAccountMobKills(player.getAccountId(), mobId);
+            int mobLevel = LifeFactory.getMonsterLevel(mobId);
+            int unitPrice = isBoss ? 0 : getMobKillUnitPrice(mobId);
             List<MapLocation> maps = getMapsForMob(mobId);
-            mobObjectives.add(new MobObjective(mobId, getMobName(mobId), currentKills, reqCount, isBoss, accountKills, maps));
+            mobObjectives.add(new MobObjective(mobId, getMobName(mobId), mobLevel, currentKills, reqCount, isBoss, accountKills, unitPrice, maps));
         }
         mobObjectives.sort(Comparator.comparingInt(MobObjective::getMobId));
 
@@ -1141,6 +1143,54 @@ public final class QuestHelpService {
         return Math.max(20, unitPrice);
     }
 
+    public int getMobKillUnitPrice(int mobId) {
+        int mobLevel = LifeFactory.getMonsterLevel(mobId);
+        if (mobLevel <= 0) {
+            mobLevel = 1;
+        }
+        return getMobKillUnitPriceByLevel(mobLevel);
+    }
+
+    public int getMobKillUnitPriceByLevel(int mobLevel) {
+        if (mobLevel <= 10) {
+            return 50;
+        } else if (mobLevel <= 20) {
+            return 100;
+        } else if (mobLevel <= 30) {
+            return 250;
+        } else if (mobLevel <= 40) {
+            return 600;
+        } else if (mobLevel <= 50) {
+            return 1200;
+        } else if (mobLevel <= 60) {
+            return 2500;
+        } else if (mobLevel <= 70) {
+            return 4500;
+        } else if (mobLevel <= 80) {
+            return 7500;
+        } else if (mobLevel <= 90) {
+            return 12000;
+        } else if (mobLevel <= 100) {
+            return 18000;
+        } else if (mobLevel <= 110) {
+            return 26000;
+        } else if (mobLevel <= 120) {
+            return 36000;
+        } else if (mobLevel <= 130) {
+            return 48000;
+        } else {
+            return 65000;
+        }
+    }
+
+    public long calculateMobKillCost(int mobId, int count) {
+        if (count <= 0) {
+            return 0L;
+        }
+        long unitPrice = getMobKillUnitPrice(mobId);
+        return unitPrice * count;
+    }
+
     public DeliveryResult syncQuestMobKill(Character player, int questId, int mobId) {
         if (player == null || player.getClient() == null) {
             return new DeliveryResult(false, "玩家状态异常。", 0);
@@ -1169,13 +1219,23 @@ public final class QuestHelpService {
             return new DeliveryResult(true, "该怪物击杀目标已达成（" + currentKills + "/" + reqCount + "），无需同步！", 0);
         }
 
+        int neededKills = reqCount - currentKills;
+        long totalCost = calculateMobKillCost(mobId, neededKills);
+        if (totalCost > 0) {
+            if (player.getMeso() < totalCost) {
+                return new DeliveryResult(false, "您的金币不足！本次快速同步需消耗 #r" + totalCost + "#k 金币，您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
+            }
+            player.gainMeso(-(int) totalCost, true, false, true);
+        }
+
         qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(reqCount), '0', 3));
         player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, false);
         if (qs.getInfoNumber() > 0) {
             player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, true);
         }
 
-        return new DeliveryResult(true, "已成功应用账号历史击杀记录，【" + getMobName(mobId) + "】击杀目标已直接同步达成（" + reqCount + "/" + reqCount + "）！", reqCount - currentKills);
+        int unitPrice = getMobKillUnitPrice(mobId);
+        return new DeliveryResult(true, "已扣除 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），成功应用账号历史击杀记录，【#b" + getMobName(mobId) + "#k】击杀目标已直接同步达成（" + reqCount + "/" + reqCount + "）！", neededKills);
     }
 
     public DeliveryResult deliverQuestMaterial(Character player, int questId, int itemId) {
@@ -1664,21 +1724,28 @@ public final class QuestHelpService {
     public static class MobObjective {
         private final int mobId;
         private final String mobName;
+        private final int mobLevel;
         private final int currentKills;
         private final int requiredKills;
         private final boolean boss;
         private final long accountKills;
         private final boolean syncable;
+        private final int unitPrice;
+        private final long totalCost;
         private final List<MapLocation> maps;
 
-        public MobObjective(int mobId, String mobName, int currentKills, int requiredKills, boolean boss, long accountKills, List<MapLocation> maps) {
+        public MobObjective(int mobId, String mobName, int mobLevel, int currentKills, int requiredKills, boolean boss, long accountKills, int unitPrice, List<MapLocation> maps) {
             this.mobId = mobId;
             this.mobName = mobName;
+            this.mobLevel = mobLevel;
             this.currentKills = currentKills;
             this.requiredKills = requiredKills;
             this.boss = boss;
             this.accountKills = accountKills;
             this.syncable = !boss && currentKills < requiredKills && accountKills >= requiredKills;
+            this.unitPrice = unitPrice;
+            int needed = Math.max(0, requiredKills - currentKills);
+            this.totalCost = (long) unitPrice * needed;
             this.maps = maps != null ? maps : Collections.emptyList();
         }
 
@@ -1688,6 +1755,10 @@ public final class QuestHelpService {
 
         public String getMobName() {
             return mobName;
+        }
+
+        public int getMobLevel() {
+            return mobLevel;
         }
 
         public int getCurrentKills() {
@@ -1708,6 +1779,14 @@ public final class QuestHelpService {
 
         public boolean isSyncable() {
             return syncable;
+        }
+
+        public int getUnitPrice() {
+            return unitPrice;
+        }
+
+        public long getTotalCost() {
+            return totalCost;
         }
 
         public boolean isCompleted() {
@@ -1894,6 +1973,20 @@ public final class QuestHelpService {
                 }
             }
             return total;
+        }
+
+        public long getTotalSyncableMobsCost() {
+            long total = 0;
+            for (MobObjective mob : mobObjectives) {
+                if (mob.isSyncable()) {
+                    total += mob.getTotalCost();
+                }
+            }
+            return total;
+        }
+
+        public long getTotalCostWithMobsAndMaterials() {
+            return getTotalSyncableMobsCost() + getTotalRegularMaterialsCost();
         }
     }
 }
