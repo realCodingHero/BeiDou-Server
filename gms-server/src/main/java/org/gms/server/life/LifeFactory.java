@@ -568,19 +568,12 @@ public class LifeFactory {
 
     public static int getMonsterLevel(int mid) {
         try {
-            MonsterStats stats = monsterStats.get(mid);
-            if (stats == null) {
-                Data monsterData = data.getData(StringUtil.getLeftPaddedStr(mid + ".img", '0', 11));
-                if (monsterData == null) {
-                    return -1;
-                }
-                Data monsterInfoData = monsterData.getChildByPath("info");
-                return DataTool.getIntConvert("level", monsterInfoData);
-            } else {
-                return stats.getLevel();
+            Monster monster = getMonster(mid);
+            if (monster != null && monster.getStats() != null) {
+                return monster.getStats().getLevel();
             }
-        } catch (NullPointerException npe) {
-            log.error("[SEVERE] MOB {} failed to load.", mid, npe);
+        } catch (Exception e) {
+            log.error("[SEVERE] MOB {} failed to get level.", mid, e);
         }
 
         return -1;
