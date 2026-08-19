@@ -450,7 +450,7 @@ function showMobMapList(mob) {
     var text = "#e#b怪物 【" + mob.getMobName() + "】 出现在以下地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
     for (var i = 0; i < currentMapList.size(); i++) {
         var map = currentMapList.get(i);
-        text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
+        text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
     text += "\r\n#L999998##b[返回任务详情]#k#l";
     cm.sendSimple(text);
@@ -509,7 +509,7 @@ function showNpcMapList(npc, npcType) {
     var text = "#e#b" + npcType + " NPC 【" + npc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
     for (var i = 0; i < currentMapList.size(); i++) {
         var map = currentMapList.get(i);
-        text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
+        text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
     text += "\r\n#L999998##b[返回任务详情]#k#l";
     cm.sendSimple(text);
@@ -571,7 +571,7 @@ function showDropMobMapList(dropMob) {
     var text = "#e#b怪物 【" + dropMob.getMobName() + "】 (掉落: " + itemName + ") 分布地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
     for (var i = 0; i < currentMapList.size(); i++) {
         var map = currentMapList.get(i);
-        text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
+        text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
     text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
     cm.sendSimple(text);
