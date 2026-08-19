@@ -1,0 +1,27 @@
+name: Nightly Untagged Image Clean
+
+on:
+  schedule:
+    # 每周日 0 点执行
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  clean-untagged-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete untagged images from GHCR
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'beidou-server'
+          package-type: 'container'
+          untagged-only: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete untagged ui images from GHCR
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'beidou-ui'
+          package-type: 'container'
+          untagged-only: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}

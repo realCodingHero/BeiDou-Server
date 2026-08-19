@@ -34,3 +34,18 @@ main/resources/static/
 src/main/resources/static/
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Docker runtime data, caches & logs
+docker/data/
+docker-db-data/
+docker-db-data-research/
+beidou-server-nightly-research/
+beidou-server-release/
+rollback-backups/
+maven-repo/
+staging/
+tools/
+build-client-cashshop.ps1
+import-cash-shop.ps1
+.pnpm-store/
+

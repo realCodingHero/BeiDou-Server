@@ -1,0 +1,74 @@
+services:
+  beidou-server:
+    container_name: beidou-research-nightly-server
+    image: beidou-server:local
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPTS: "-XX:+UseZGC -XX:+ZGenerational -XX:+UseStringDeduplication -Xms1024m -Xmx2048m -Xlog:gc*:stdout:time,level,tags"
+    ports:
+      # Login server
+      - "127.0.0.2:8484:8484"
+      # Channels 1 ~ 3
+      - "127.0.0.2:7575-7577:7575-7577"
+    volumes:
+      - ../../gms-server/target/BeiDou.jar:/opt/server/BeiDou.jar
+      - ../../gms-server/src/main/resources/application.yml:/opt/server/application.yml
+      - ../../gms-server/scripts:/opt/server/scripts
+      - ../../gms-server/scripts-zh-CN:/opt/server/scripts-zh-CN
+      - ../../gms-server/wz:/opt/server/wz
+      - ../../gms-server/wz-zh-CN:/opt/server/wz-zh-CN
+      - ../data/logs:/opt/server/logs
+    command:
+      - --mybatis-flex.datasource.mysql.url=jdbc:mysql://beidou-db:3306/beidou?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      - --mybatis-flex.datasource.mysql.username=root
+      - --mybatis-flex.datasource.mysql.password=root
+      - --gms.service.wan-host=127.0.0.2
+      - --gms.service.lan-host=127.0.0.2
+      - --gms.service.localhost=127.0.0.2
+    healthcheck:
+      test: ["CMD", "sh", "-c", "netstat -tunlp | grep :8484 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 300s
+    depends_on:
+      beidou-db:
+        condition: service_healthy
+    networks:
+      - beidou-network
+
+  beidou-ui:
+    container_name: beidou-research-nightly-ui
+    image: beidou-ui:local
+    restart: unless-stopped
+    ports:
+      # Web
+      - "127.0.0.2:8686:8686"
+    depends_on:
+      - beidou-server
+    networks:
+      - beidou-network
+      
+  beidou-db:
+    container_name: beidou-research-nightly-db
+    image: mysql:8.4.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "root"
+    ports:
+      - "127.0.0.2:3306:3306"
+    volumes:
+      - ../data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - beidou-network
+
+networks:
+  beidou-network:
+    driver: bridge
