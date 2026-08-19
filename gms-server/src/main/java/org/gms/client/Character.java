@@ -6759,6 +6759,7 @@ public class Character extends AbstractCharacterObject {
         // We also want to run mobKilled for both since there are some quest that don't use the updated ID...
         if (id == MobId.GREEN_MUSHROOM || id == MobId.DEJECTED_GREEN_MUSHROOM) {
             raiseQuestMobCount(MobId.GREEN_MUSHROOM_QUEST);
+            raiseQuestMobCount(1110101);
         } else if (id == MobId.ZOMBIE_MUSHROOM || id == MobId.ANNOYED_ZOMBIE_MUSHROOM) {
             raiseQuestMobCount(MobId.ZOMBIE_MUSHROOM_QUEST);
         } else if (id == MobId.GHOST_STUMP || id == MobId.SMIRKING_GHOST_STUMP) {
