@@ -779,6 +779,7 @@ public class Monster extends AbstractLoadedLife {
             attacker.gainExp(_basePersonalExp, _bonusEventExp, _partyExp, 0, 0, 0, true, false, white);
             attacker.increaseEquipExp(_basePersonalExp + _bonusEventExp);
             attacker.raiseQuestMobCount(getId());
+            org.gms.server.quest.QuestHelpService.getInstance().recordMobKill(attacker.getAccountId(), getId(), this.getStats().isBoss());
             VeteranHunterMedal.onMonsterKilled(attacker, this);
             // 特级挑战勋章复用怪物死亡事件，在角色已接任务时写入个人击杀进度。
             SpecialChallengeMedal.onMonsterKilled(attacker, this);

@@ -22,6 +22,7 @@ package org.gms.server.quest;
 import org.gms.client.Character;
 import org.gms.client.QuestStatus;
 import org.gms.client.inventory.InventoryType;
+import org.gms.constants.game.DelayedQuestUpdate;
 import org.gms.constants.id.MobId;
 import org.gms.constants.inventory.ItemConstants;
 import org.gms.provider.Data;
@@ -37,6 +38,7 @@ import org.gms.server.life.LifeFactory;
 import org.gms.server.life.MonsterInformationProvider;
 import org.gms.server.maps.MapFactory;
 import org.gms.util.DatabaseConnection;
+import org.gms.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -123,6 +125,10 @@ public final class QuestHelpService {
     private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> regularMaterialCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> materialUnitPriceCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Integer> nativeShopItemPrices = new ConcurrentHashMap<>();
+    private final Map<Integer, Set<Integer>> nativeShopItemNpcs = new ConcurrentHashMap<>();
+    private final Map<Integer, Map<Integer, Long>> accountMobKillsCache = new ConcurrentHashMap<>();
+    private final java.util.concurrent.ExecutorService dbExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
@@ -172,8 +178,29 @@ public final class QuestHelpService {
             }
         }
 
-        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs",
-                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size());
+        // 加载原生 NPC 商店物品与价格（排除 GM 商店 1337 以及非地图 NPC）
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT s.npcid, si.itemid, si.price " +
+                     "FROM shops s " +
+                     "JOIN shopitems si ON s.shopid = si.shopid " +
+                     "WHERE si.price > 0 AND s.shopid != 1337 AND s.npcid < 9000000");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                int npcId = rs.getInt("npcid");
+                int itemId = rs.getInt("itemid");
+                int price = rs.getInt("price");
+                if (price > 0 && npcToMaps.containsKey(npcId)) {
+                    nativeShopItemPrices.merge(itemId, price, Math::min);
+                    nativeShopItemNpcs.computeIfAbsent(itemId, k -> ConcurrentHashMap.newKeySet()).add(npcId);
+                }
+            }
+        } catch (SQLException e) {
+            log.warn("Failed to load native shops for quest help service", e);
+        }
+
+        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} shop items",
+                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size());
     }
 
     private void scanDir(DataProvider mapSource, DataEntity entity) {
@@ -468,10 +495,57 @@ public final class QuestHelpService {
         return Collections.unmodifiableList(dropMobs);
     }
 
+    public boolean isNativeShopItem(int itemId) {
+        ensureInitialized();
+        return nativeShopItemPrices.containsKey(itemId);
+    }
+
+    public Integer getNativeShopPrice(int itemId) {
+        ensureInitialized();
+        return nativeShopItemPrices.get(itemId);
+    }
+
     /**
-     * 判断道具是否为单纯由普通怪物掉落的普通杂物/消耗品材料（可供任务辅助快捷补齐）
-     * 允许：普通 ETC 杂物材料、普通 USE 消耗品道具
-     * 严格排除：装备、商城道具、任务专属(403xxxx/quest标记)、不可出售/不可交易/唯一道具、仅Boss掉落/仅箱子掉落道具
+     * 判断道具是否可由任务辅助系统购买补齐（普通怪物掉落材料 或 原生NPC商店售卖道具）
+     * 严格排除：装备(1xxxxxx)、商城道具(5xxxxxx)、专属任务道具(403xxxx)、不可出售/不可交易/唯一道具
+     */
+    public boolean isPurchasableMaterial(int itemId) {
+        if (isRegularMonsterMaterial(itemId)) {
+            return true;
+        }
+        if (!isNativeShopItem(itemId)) {
+            return false;
+        }
+
+        InventoryType invType = ItemConstants.getInventoryType(itemId);
+        if (invType != InventoryType.ETC && invType != InventoryType.USE && invType != InventoryType.SETUP) {
+            return false;
+        }
+        if (itemId >= 4030000 && itemId < 4040000) {
+            return false;
+        }
+
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        if (ii.isQuestItem(itemId) || ii.isPartyQuestItem(itemId) || ii.isPickupRestricted(itemId) ||
+            ii.isUntradeableRestricted(itemId) || ii.isAccountRestricted(itemId) || ii.isDropRestricted(itemId)) {
+            return false;
+        }
+
+        Data itemData = ii.getItemData(itemId);
+        if (itemData != null) {
+            int notSale = DataTool.getIntConvert("info/notSale", itemData, 0);
+            int tradeBlock = DataTool.getIntConvert("info/tradeBlock", itemData, 0);
+            int only = DataTool.getIntConvert("info/only", itemData, 0);
+            if (notSale == 1 || tradeBlock == 1 || only == 1) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 判断道具是否为单纯由普通怪物掉落的普通杂物/消耗品材料
      */
     public boolean isRegularMonsterMaterial(int itemId) {
         return regularMaterialCache.computeIfAbsent(itemId, id -> {
@@ -523,6 +597,57 @@ public final class QuestHelpService {
     }
 
     /**
+     * 记录账号怪物击杀历史（严格排除 Boss）
+     */
+    public void recordMobKill(int accountId, int mobId, boolean isBoss) {
+        if (accountId <= 0 || mobId <= 0 || isBoss) {
+            return;
+        }
+        accountMobKillsCache.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>()).merge(mobId, 1L, Long::sum);
+        dbExecutor.submit(() -> {
+            try (Connection con = DatabaseConnection.getConnection();
+                 PreparedStatement ps = con.prepareStatement(
+                         "INSERT INTO account_mob_kills (account_id, mob_id, kill_count) VALUES (?, ?, 1) " +
+                         "ON DUPLICATE KEY UPDATE kill_count = kill_count + 1")) {
+                ps.setInt(1, accountId);
+                ps.setInt(2, mobId);
+                ps.executeUpdate();
+            } catch (Exception e) {
+                log.warn("Failed to record account mob kill for acc: {}, mob: {}", accountId, mobId, e);
+            }
+        });
+    }
+
+    /**
+     * 获取账号累计消灭某怪物的总数
+     */
+    public long getAccountMobKills(int accountId, int mobId) {
+        if (accountId <= 0 || mobId <= 0) {
+            return 0L;
+        }
+        Map<Integer, Long> map = accountMobKillsCache.get(accountId);
+        if (map != null && map.containsKey(mobId)) {
+            return map.get(mobId);
+        }
+        long count = 0L;
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT kill_count FROM account_mob_kills WHERE account_id = ? AND mob_id = ?")) {
+            ps.setInt(1, accountId);
+            ps.setInt(2, mobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    count = rs.getLong("kill_count");
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get account mob kills for acc: {}, mob: {}", accountId, mobId, e);
+        }
+        accountMobKillsCache.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>()).put(mobId, count);
+        return count;
+    }
+
+    /**
      * 判断玩家是否已达成该任务的全部完成条件（杀怪、道具收集等），可前往交付
      * 传入该任务预期的完成 NPC ID，以便正确通过底层 NpcRequirement 校验
      */
@@ -536,12 +661,12 @@ public final class QuestHelpService {
     }
 
     /**
-     * 判断任务当前未达成的所有交付条件是否均可通过向辅助商店购买普通材料补齐解锁（可购买交付）
+     * 判断任务当前未达成的所有交付条件是否均可通过向辅助商店购买材料或同步账号击杀补齐解锁（可直接补齐交付）
      * 满足条件：
      * 1. 任务当前尚未满足全部直接交付条件（非 isCanComplete）；
-     * 2. 怪物击杀目标已全部完成（无剩余待杀怪物）；
-     * 3. 物品收集目标中，所有未集齐的道具均属于普通怪物材料（isRegularMonsterMaterial），无未完成的特殊/剧情/Boss专属道具；
-     * 4. 至少存在一项未集齐的可购买普通怪物材料。
+     * 2. 怪物击杀目标中，所有未集齐的均满足账号历史击杀（非Boss且累计击杀>=需求）；
+     * 3. 物品收集目标中，所有未集齐的道具均属于可购买材料（isPurchasableMaterial），无未完成的特殊/剧情/Boss专属道具；
+     * 4. 至少存在一项未集齐的可同步击杀或可购买材料。
      */
     public boolean isQuestPurchasableCompletable(Character player, Quest q) {
         if (player == null || q == null) {
@@ -555,7 +680,7 @@ public final class QuestHelpService {
             return false;
         }
 
-        // 1. 击杀目标必须全部达成
+        // 1. 击杀目标：所有未达成的目标必须满足账号历史共享条件（且非Boss）
         Map<Integer, Integer> reqMobs = new HashMap<>(q.getRequiredMobs());
         if (reqMobs.isEmpty() && !q.getRelevantMobs().isEmpty()) {
             for (int mobId : q.getRelevantMobs()) {
@@ -565,37 +690,46 @@ public final class QuestHelpService {
                 }
             }
         }
+        boolean hasIncompleteSyncableOrPurchasable = false;
+        MonsterInformationProvider mip = MonsterInformationProvider.getInstance();
+
         for (Map.Entry<Integer, Integer> entry : reqMobs.entrySet()) {
-            int currentKills = parseProgress(qs.getProgress(entry.getKey()));
-            if (currentKills < entry.getValue()) {
-                return false;
-            }
-        }
-
-        // 2. 道具目标：所有未集齐的道具必须全是可购买材料
-        Map<Integer, Integer> reqItems = q.getRequiredItems();
-        if (reqItems == null || reqItems.isEmpty()) {
-            return false;
-        }
-
-        boolean hasIncompletePurchasable = false;
-        for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
-            int itemId = entry.getKey();
-            int reqCount = entry.getValue();
-            InventoryType iType = ItemConstants.getInventoryType(itemId);
-            int currentCount = 0;
-            if (iType != null && !iType.equals(InventoryType.UNDEFINED) && player.getInventory(iType) != null) {
-                currentCount = player.getInventory(iType).countById(itemId);
-            }
-            if (currentCount < reqCount) {
-                if (!isRegularMonsterMaterial(itemId)) {
-                    return false; // 有未达成的不可购买道具
+            int mobId = entry.getKey();
+            int req = entry.getValue();
+            int currentKills = parseProgress(qs.getProgress(mobId));
+            if (currentKills < req) {
+                if (mip.isBoss(mobId)) {
+                    return false; // 有未完成的 Boss 目标，无法一键补齐
                 }
-                hasIncompletePurchasable = true;
+                long accKills = getAccountMobKills(player.getAccountId(), mobId);
+                if (accKills < req) {
+                    return false; // 账号历史击杀不足
+                }
+                hasIncompleteSyncableOrPurchasable = true;
             }
         }
 
-        return hasIncompletePurchasable;
+        // 2. 道具目标：所有未集齐的道具必须全是可购买材料（普通怪物材料或原生商店道具）
+        Map<Integer, Integer> reqItems = q.getRequiredItems();
+        if (reqItems != null) {
+            for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
+                int itemId = entry.getKey();
+                int reqCount = entry.getValue();
+                InventoryType iType = ItemConstants.getInventoryType(itemId);
+                int currentCount = 0;
+                if (iType != null && !iType.equals(InventoryType.UNDEFINED) && player.getInventory(iType) != null) {
+                    currentCount = player.getInventory(iType).countById(itemId);
+                }
+                if (currentCount < reqCount) {
+                    if (!isPurchasableMaterial(itemId)) {
+                        return false; // 有未达成的不可购买道具
+                    }
+                    hasIncompleteSyncableOrPurchasable = true;
+                }
+            }
+        }
+
+        return hasIncompleteSyncableOrPurchasable;
     }
 
     public List<QuestSummary> getStartedQuestSummaries(Character player) {
@@ -615,7 +749,6 @@ public final class QuestHelpService {
             long lastModifiedTime = qs.getLastModifiedTime();
             list.add(new QuestSummary(q.getId(), name, canComplete, purchasableComplete, lastModifiedTime));
         }
-        // 根据最近状态变更/领取时间倒序排序（最新在前），时间相同时按任务ID倒序
         list.sort((a, b) -> {
             int cmp = Long.compare(b.getLastModifiedTime(), a.getLastModifiedTime());
             if (cmp != 0) return cmp;
@@ -664,7 +797,6 @@ public final class QuestHelpService {
         boolean canComplete = isQuestCompletable(player, q);
         boolean purchasableComplete = isQuestPurchasableCompletable(player, q);
 
-        // 1. NPC Info
         int startNpcId = q.getNpcRequirement(false);
         NpcLocationInfo startNpc = null;
         if (startNpcId > 0) {
@@ -677,7 +809,6 @@ public final class QuestHelpService {
             completeNpc = new NpcLocationInfo(completeNpcId, getNPCName(completeNpcId), 1, getMapsForNpc(completeNpcId));
         }
 
-        // 2. Mob Objectives
         List<MobObjective> mobObjectives = new ArrayList<>();
         Map<Integer, Integer> reqMobs = new HashMap<>(q.getRequiredMobs());
         if (reqMobs.isEmpty() && !q.getRelevantMobs().isEmpty()) {
@@ -694,12 +825,12 @@ public final class QuestHelpService {
             int reqCount = entry.getValue();
             int currentKills = parseProgress(qs.getProgress(mobId));
             boolean isBoss = MonsterInformationProvider.getInstance().isBoss(mobId);
+            long accountKills = isBoss ? 0L : getAccountMobKills(player.getAccountId(), mobId);
             List<MapLocation> maps = getMapsForMob(mobId);
-            mobObjectives.add(new MobObjective(mobId, getMobName(mobId), currentKills, reqCount, isBoss, maps));
+            mobObjectives.add(new MobObjective(mobId, getMobName(mobId), currentKills, reqCount, isBoss, accountKills, maps));
         }
         mobObjectives.sort(Comparator.comparingInt(MobObjective::getMobId));
 
-        // 3. Item Objectives
         List<ItemObjective> itemObjectives = new ArrayList<>();
         Map<Integer, Integer> reqItems = q.getRequiredItems();
         for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
@@ -710,71 +841,112 @@ public final class QuestHelpService {
             if (iType != null && !iType.equals(InventoryType.UNDEFINED) && player.getInventory(iType) != null) {
                 currentCount = player.getInventory(iType).countById(itemId);
             }
-            boolean deliverable = isRegularMonsterMaterial(itemId);
+            boolean deliverable = isPurchasableMaterial(itemId);
+            boolean isShop = isNativeShopItem(itemId);
             int unitPrice = deliverable ? getMaterialUnitPrice(itemId) : 0;
             List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
-            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, unitPrice, dropMobs));
+            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, isShop, unitPrice, dropMobs));
         }
         itemObjectives.sort(Comparator.comparingInt(ItemObjective::getItemId));
 
         return new QuestDetailInfo(questId, questName, canComplete, purchasableComplete, startNpc, completeNpc, mobObjectives, itemObjectives);
     }
 
-    /**
-     * 获取普通怪物材料的辅助系统出售单价（基于商店回收价、掉落怪物等级与爆率稀缺度综合计算）
-     * 公式：
-     * BasePrice = wholePrice * 20 + mobLevel * 30
-     * RarityFactor = clamp((500,000 / chance)^0.90, 0.75, 10.0)
-     * UnitPrice = max(20, round(BasePrice * RarityFactor))
-     */
     public int getMaterialUnitPrice(int itemId) {
         return materialUnitPriceCache.computeIfAbsent(itemId, id -> {
-            ItemInformationProvider ii = ItemInformationProvider.getInstance();
-            int wholePrice = ii.getWholePrice(id);
-            if (wholePrice <= 0) {
-                wholePrice = 1;
-            }
-
-            int bestMobLevel = 10;
-            int bestChance = 500000; // 默认 50% 爆率
-            boolean foundMob = false;
-
-            List<DropMobInfo> dropMobs = getDropMobsForItem(id);
-            if (dropMobs != null && !dropMobs.isEmpty()) {
-                for (DropMobInfo mob : dropMobs) {
-                    if (!mob.isBoss()) {
-                        int mobId = mob.getMobId();
-                        int chance = mob.getChance();
-                        int mobLevel = LifeFactory.getMonsterLevel(mobId);
-                        if (mobLevel <= 0) {
-                            mobLevel = 10;
-                        }
-                        if (!foundMob || chance > bestChance) {
-                            bestChance = Math.max(1, chance);
-                            bestMobLevel = Math.max(1, mobLevel);
-                            foundMob = true;
-                        }
-                    }
+            Integer shopPrice = getNativeShopPrice(id);
+            if (shopPrice != null && shopPrice > 0) {
+                int shopUnitPrice = Math.max(10, shopPrice * 10);
+                if (isRegularMonsterMaterial(id)) {
+                    int dropUnitPrice = calculateDropUnitPrice(id);
+                    return Math.min(shopUnitPrice, dropUnitPrice);
                 }
+                return shopUnitPrice;
             }
-
-            double basePrice = (wholePrice * 20.0) + (bestMobLevel * 30.0);
-            double ratio = 500000.0 / bestChance;
-            double rarityFactor = Math.pow(ratio, 0.90);
-            if (rarityFactor < 0.75) {
-                rarityFactor = 0.75;
-            } else if (rarityFactor > 10.0) {
-                rarityFactor = 10.0;
-            }
-
-            int unitPrice = (int) Math.round(basePrice * rarityFactor);
-            return Math.max(20, unitPrice);
+            return calculateDropUnitPrice(id);
         });
     }
 
-    /**
-     * 单独向玩家出售并补齐某一项任务普通怪物材料（带金币扣除与背包空间校验）
-     */
+    private int calculateDropUnitPrice(int itemId) {
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        int wholePrice = ii.getWholePrice(itemId);
+        if (wholePrice <= 0) {
+            wholePrice = 1;
+        }
+
+        int bestMobLevel = 10;
+        int bestChance = 500000;
+        boolean foundMob = false;
+
+        List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
+        if (dropMobs != null && !dropMobs.isEmpty()) {
+            for (DropMobInfo mob : dropMobs) {
+                if (!mob.isBoss()) {
+                    int mobId = mob.getMobId();
+                    int chance = mob.getChance();
+                    int mobLevel = LifeFactory.getMonsterLevel(mobId);
+                    if (mobLevel <= 0) {
+                        mobLevel = 10;
+                    }
+                    if (!foundMob || chance > bestChance) {
+                        bestChance = Math.max(1, chance);
+                        bestMobLevel = Math.max(1, mobLevel);
+                        foundMob = true;
+                    }
+                }
+            }
+        }
+
+        double basePrice = (wholePrice * 20.0) + (bestMobLevel * 30.0);
+        double ratio = 500000.0 / bestChance;
+        double rarityFactor = Math.pow(ratio, 0.90);
+        if (rarityFactor < 0.75) {
+            rarityFactor = 0.75;
+        } else if (rarityFactor > 10.0) {
+            rarityFactor = 10.0;
+        }
+
+        int unitPrice = (int) Math.round(basePrice * rarityFactor);
+        return Math.max(20, unitPrice);
+    }
+
+    public DeliveryResult syncQuestMobKill(Character player, int questId, int mobId) {
+        if (player == null || player.getClient() == null) {
+            return new DeliveryResult(false, "玩家状态异常。", 0);
+        }
+        QuestStatus qs = player.getQuest(Quest.getInstance(questId));
+        if (qs == null || !qs.getStatus().equals(QuestStatus.Status.STARTED)) {
+            return new DeliveryResult(false, "您尚未接取该任务或任务已结束。", 0);
+        }
+        Quest q = qs.getQuest();
+        if (q == null) {
+            return new DeliveryResult(false, "任务数据不存在。", 0);
+        }
+        int reqCount = q.getMobAmountNeeded(mobId);
+        if (reqCount <= 0) {
+            return new DeliveryResult(false, "该任务不需要击杀此怪物。", 0);
+        }
+        if (MonsterInformationProvider.getInstance().isBoss(mobId)) {
+            return new DeliveryResult(false, "该怪物属于 Boss 怪物，不支持账号历史共享，需亲自击杀！", 0);
+        }
+        long accountKills = getAccountMobKills(player.getAccountId(), mobId);
+        if (accountKills < reqCount) {
+            return new DeliveryResult(false, "您的账号历史击杀数不足（已击杀: " + accountKills + "/" + reqCount + "），无法同步！", 0);
+        }
+        int currentKills = parseProgress(qs.getProgress(mobId));
+        if (currentKills >= reqCount) {
+            return new DeliveryResult(true, "该怪物击杀目标已达成（" + currentKills + "/" + reqCount + "），无需同步！", 0);
+        }
+
+        qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(reqCount), '0', 3));
+        player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, false);
+        if (qs.getInfoNumber() > 0) {
+            player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, true);
+        }
+
+        return new DeliveryResult(true, "已成功应用账号历史击杀记录，【" + getMobName(mobId) + "】击杀目标已直接同步达成（" + reqCount + "/" + reqCount + "）！", reqCount - currentKills);
+    }
+
     public DeliveryResult deliverQuestMaterial(Character player, int questId, int itemId) {
         if (player == null || player.getClient() == null) {
             return new DeliveryResult(false, "玩家状态异常。", 0);
@@ -791,7 +963,7 @@ public final class QuestHelpService {
         if (reqCount == null || reqCount <= 0) {
             return new DeliveryResult(false, "该任务不需要此道具。", 0);
         }
-        if (!isRegularMonsterMaterial(itemId)) {
+        if (!isPurchasableMaterial(itemId)) {
             return new DeliveryResult(false, "该道具属于特殊/剧情/Boss掉落道具，不支持快捷购买，请在游戏中探索获取！", 0);
         }
 
@@ -811,16 +983,14 @@ public final class QuestHelpService {
             return new DeliveryResult(false, "您的金币不足！购买 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + " 共需 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
         }
 
-        // 严格校验背包空间
         if (!org.gms.client.inventory.manipulator.InventoryManipulator.checkSpace(player.getClient(), itemId, neededCount, "")) {
             String invName = (iType != null && iType.getName() != null) ? iType.getName() : "对应";
             return new DeliveryResult(false, "您的【" + invName + "】背包空间不足，请清理出至少 1 个空闲格子后再试！", 0);
         }
 
         player.gainMeso(-(int) totalCost, true, false, true);
-        boolean added = org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) neededCount, "任务辅助购买普通材料", -1);
+        boolean added = org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) neededCount, "任务辅助购买材料", -1);
         if (!added) {
-            // 回滚退还金币
             player.gainMeso((int) totalCost, true, false, true);
             return new DeliveryResult(false, "发放道具失败，已退还金币，请检查背包空间后重试。", 0);
         }
@@ -828,9 +998,6 @@ public final class QuestHelpService {
         return new DeliveryResult(true, "已扣除 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），成功为您购买补齐 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + "！", neededCount);
     }
 
-    /**
-     * 一键向玩家出售并补齐当前任务所有符合条件的普通怪物材料（带总金币校验与渐进式背包空间校验）
-     */
     public DeliveryResult deliverAllRegularMaterials(Character player, int questId) {
         if (player == null || player.getClient() == null) {
             return new DeliveryResult(false, "玩家状态异常。", 0);
@@ -845,7 +1012,7 @@ public final class QuestHelpService {
         }
 
         Map<Integer, Integer> reqItems = q.getRequiredItems();
-        if (reqItems.isEmpty()) {
+        if (reqItems == null || reqItems.isEmpty()) {
             return new DeliveryResult(false, "该任务无需收集任何道具。", 0);
         }
 
@@ -856,7 +1023,7 @@ public final class QuestHelpService {
         for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
             int itemId = entry.getKey();
             int req = entry.getValue();
-            if (isRegularMonsterMaterial(itemId)) {
+            if (isPurchasableMaterial(itemId)) {
                 deliverableItemTypes++;
                 InventoryType iType = ItemConstants.getInventoryType(itemId);
                 int cur = 0;
@@ -877,7 +1044,7 @@ public final class QuestHelpService {
         }
 
         if (toDeliver.isEmpty()) {
-            String msg = "该任务所需的所有普通怪物材料您已全部集齐，无需购买！";
+            String msg = "该任务所需的所有普通/商店材料您已全部集齐，无需购买！";
             if (restrictedItemTypes > 0) {
                 msg += "\r\n#r注：尚有 " + restrictedItemTypes + " 种特殊/剧情道具需手动探索获取。#k";
             }
@@ -893,10 +1060,9 @@ public final class QuestHelpService {
         }
 
         if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
-            return new DeliveryResult(false, "您的金币不足！一键购买本任务全部普通材料共需 #r" + totalCost + "#k 金币，您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
+            return new DeliveryResult(false, "您的金币不足！一键购买本任务全部可购材料共需 #r" + totalCost + "#k 金币，您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
         }
 
-        // 渐进式多物品背包空间模拟校验，按各个背包分类分别跟踪所需空闲槽位
         int[] simulatedUsedSlots = new int[6];
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
@@ -915,16 +1081,15 @@ public final class QuestHelpService {
             simulatedUsedSlots[typeIdx] = result;
         }
 
-        // 扣除金币与安全发放全部材料
         player.gainMeso(-(int) totalCost, true, false, true);
         int totalCount = 0;
-        StringBuilder sb = new StringBuilder("已扣除 #r").append(totalCost).append("#k 金币，成功为您购买并补齐以下普通怪物材料：\r\n\r\n");
+        StringBuilder sb = new StringBuilder("已扣除 #r").append(totalCost).append("#k 金币，成功为您购买并补齐以下材料：\r\n\r\n");
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
             int unitPrice = getMaterialUnitPrice(itemId);
             long itemCost = (long) unitPrice * qty;
-            org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助购买普通材料", -1);
+            org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助购买材料", -1);
             totalCount += qty;
             sb.append("#v").append(itemId).append("# 【#b").append(getItemName(itemId)).append("#k】 x").append(qty)
               .append(" (单价: ").append(unitPrice).append(" 金币, 小计: ").append(itemCost).append(" 金币)\r\n");
@@ -935,6 +1100,86 @@ public final class QuestHelpService {
         }
 
         return new DeliveryResult(true, sb.toString(), totalCount);
+    }
+
+    public DeliveryResult deliverAllQuestObjectives(Character player, int questId) {
+        if (player == null || player.getClient() == null) {
+            return new DeliveryResult(false, "玩家状态异常。", 0);
+        }
+        QuestStatus qs = player.getQuest(Quest.getInstance(questId));
+        if (qs == null || !qs.getStatus().equals(QuestStatus.Status.STARTED)) {
+            return new DeliveryResult(false, "您尚未接取该任务或任务已结束。", 0);
+        }
+        Quest q = qs.getQuest();
+        if (q == null) {
+            return new DeliveryResult(false, "任务数据不存在。", 0);
+        }
+
+        Map<Integer, Integer> reqMobs = new HashMap<>(q.getRequiredMobs());
+        if (reqMobs.isEmpty() && !q.getRelevantMobs().isEmpty()) {
+            for (int mobId : q.getRelevantMobs()) {
+                int count = q.getMobAmountNeeded(mobId);
+                if (count > 0) {
+                    reqMobs.put(mobId, count);
+                }
+            }
+        }
+        int syncedMobCount = 0;
+        int bossMobCount = 0;
+        int unsyncedMobCount = 0;
+        boolean questUpdated = false;
+
+        MonsterInformationProvider mip = MonsterInformationProvider.getInstance();
+        for (Map.Entry<Integer, Integer> entry : reqMobs.entrySet()) {
+            int mobId = entry.getKey();
+            int req = entry.getValue();
+            int cur = parseProgress(qs.getProgress(mobId));
+            if (cur < req) {
+                if (mip.isBoss(mobId)) {
+                    bossMobCount++;
+                } else {
+                    long accKills = getAccountMobKills(player.getAccountId(), mobId);
+                    if (accKills >= req) {
+                        qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(req), '0', 3));
+                        syncedMobCount++;
+                        questUpdated = true;
+                    } else {
+                        unsyncedMobCount++;
+                    }
+                }
+            }
+        }
+
+        if (questUpdated) {
+            player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, false);
+            if (qs.getInfoNumber() > 0) {
+                player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, true);
+            }
+        }
+
+        DeliveryResult itemResult = null;
+        if (q.getRequiredItems() != null && !q.getRequiredItems().isEmpty()) {
+            itemResult = deliverAllRegularMaterials(player, questId);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        if (syncedMobCount > 0) {
+            sb.append("★ 成功为您同步达成 #b").append(syncedMobCount).append("#k 项账号历史怪物击杀目标！\r\n\r\n");
+        }
+        if (itemResult != null) {
+            sb.append(itemResult.getMessage());
+        }
+
+        if (bossMobCount > 0) {
+            sb.append("\r\n#r注：尚有 ").append(bossMobCount).append(" 项 Boss 击杀目标需亲自挑战。#k");
+        }
+        if (unsyncedMobCount > 0) {
+            sb.append("\r\n#r注：尚有 ").append(unsyncedMobCount).append(" 项怪物击杀账号历史累计数量未达标，需手动消灭。#k");
+        }
+
+        int totalCount = syncedMobCount + (itemResult != null ? itemResult.getTotalItemsDelivered() : 0);
+        boolean overallSuccess = syncedMobCount > 0 || (itemResult != null && itemResult.isSuccess());
+        return new DeliveryResult(overallSuccess, sb.toString(), totalCount);
     }
 
     private static int parseProgress(String progress) {
@@ -957,8 +1202,8 @@ public final class QuestHelpService {
 
     private String getNPCName(int npcId) {
         return npcNameCache.computeIfAbsent(npcId, id -> {
-            String name = LifeFactory.getNPCName(id);
-            return (name == null || name.isBlank() || "MISSINGNO".equals(name)) ? "NPC " + id : name;
+            String name = LifeFactory.getNPC(id).getName();
+            return (name == null || name.isBlank()) ? "NPC " + id : name;
         });
     }
 
@@ -969,7 +1214,6 @@ public final class QuestHelpService {
         });
     }
 
-    // Models
     public static class DeliveryResult {
         private final boolean success;
         private final String message;
@@ -1188,14 +1432,18 @@ public final class QuestHelpService {
         private final int currentKills;
         private final int requiredKills;
         private final boolean boss;
+        private final long accountKills;
+        private final boolean syncable;
         private final List<MapLocation> maps;
 
-        public MobObjective(int mobId, String mobName, int currentKills, int requiredKills, boolean boss, List<MapLocation> maps) {
+        public MobObjective(int mobId, String mobName, int currentKills, int requiredKills, boolean boss, long accountKills, List<MapLocation> maps) {
             this.mobId = mobId;
             this.mobName = mobName;
             this.currentKills = currentKills;
             this.requiredKills = requiredKills;
             this.boss = boss;
+            this.accountKills = accountKills;
+            this.syncable = !boss && currentKills < requiredKills && accountKills >= requiredKills;
             this.maps = maps != null ? maps : Collections.emptyList();
         }
 
@@ -1219,6 +1467,14 @@ public final class QuestHelpService {
             return boss;
         }
 
+        public long getAccountKills() {
+            return accountKills;
+        }
+
+        public boolean isSyncable() {
+            return syncable;
+        }
+
         public boolean isCompleted() {
             return currentKills >= requiredKills;
         }
@@ -1234,16 +1490,18 @@ public final class QuestHelpService {
         private final int currentCount;
         private final int requiredCount;
         private final boolean deliverable;
+        private final boolean nativeShopItem;
         private final int unitPrice;
         private final long totalPrice;
         private final List<DropMobInfo> dropMobs;
 
-        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, int unitPrice, List<DropMobInfo> dropMobs) {
+        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, boolean nativeShopItem, int unitPrice, List<DropMobInfo> dropMobs) {
             this.itemId = itemId;
             this.itemName = itemName;
             this.currentCount = currentCount;
             this.requiredCount = requiredCount;
             this.deliverable = deliverable;
+            this.nativeShopItem = nativeShopItem;
             this.unitPrice = unitPrice;
             this.totalPrice = (long) unitPrice * Math.max(0, requiredCount - currentCount);
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
@@ -1267,6 +1525,10 @@ public final class QuestHelpService {
 
         public boolean isDeliverable() {
             return deliverable;
+        }
+
+        public boolean isNativeShopItem() {
+            return nativeShopItem;
         }
 
         public int getUnitPrice() {
@@ -1369,6 +1631,24 @@ public final class QuestHelpService {
 
         public List<ItemObjective> getItemObjectives() {
             return itemObjectives;
+        }
+
+        public boolean hasSyncableMobKills() {
+            for (MobObjective mob : mobObjectives) {
+                if (mob.isSyncable()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public boolean hasDeliverableIncompleteItems() {
+            for (ItemObjective item : itemObjectives) {
+                if (item.isDeliverable() && !item.isCompleted()) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public long getTotalRegularMaterialsCost() {

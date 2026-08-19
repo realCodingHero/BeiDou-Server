@@ -56,18 +56,36 @@ public class QuestWarpAndExpTest {
     }
 
     @Test
-    public void testExpBreakdownCalculation() {
-        int gain = 10000;
-        float questRate = 1.5f;
-        float worldRate = 2.0f;
-        int couponRate = 2;
+    public void testNativeShopPricingAndAccountMobKills() throws Exception {
+        QuestHelpService service = QuestHelpService.getInstance();
 
-        int questBonus = (int) (gain * (questRate - 1.0f));
-        int worldBonus = (int) (gain * (worldRate - 1.0f));
-        int couponBonus = gain * (couponRate - 1);
+        Field shopPricesField = QuestHelpService.class.getDeclaredField("nativeShopItemPrices");
+        shopPricesField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Integer> shopPrices = (Map<Integer, Integer>) shopPricesField.get(service);
 
-        assertEquals(5000, questBonus);
-        assertEquals(10000, worldBonus);
-        assertEquals(10000, couponBonus);
+        Field regMatField = QuestHelpService.class.getDeclaredField("regularMaterialCache");
+        regMatField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Boolean> regMatCache = (Map<Integer, Boolean>) regMatField.get(service);
+        regMatCache.put(2000000, false);
+
+        // 注入原生商店道具: 2000000(红药水, 商店原价 50 金币)
+        shopPrices.put(2000000, 50);
+
+        assertEquals(true, service.isNativeShopItem(2000000));
+        assertEquals(50, service.getNativeShopPrice(2000000));
+        // 原生商店售价 10 倍: 50 * 10 = 500
+        assertEquals(500, service.getMaterialUnitPrice(2000000));
+
+        // 账号怪物击杀测试
+        Field killsField = QuestHelpService.class.getDeclaredField("accountMobKillsCache");
+        killsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Map<Integer, Long>> killsCache = (Map<Integer, Map<Integer, Long>>) killsField.get(service);
+
+        killsCache.computeIfAbsent(1001, k -> new ConcurrentHashMap<>()).put(100100, 150L);
+        assertEquals(150L, service.getAccountMobKills(1001, 100100));
+        assertEquals(0L, service.getAccountMobKills(1001, 999999));
     }
 }
