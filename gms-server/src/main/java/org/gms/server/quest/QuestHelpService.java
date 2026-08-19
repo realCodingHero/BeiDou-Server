@@ -538,9 +538,6 @@ public final class QuestHelpService {
         if (player == null) {
             return false;
         }
-        if (player.isGM()) {
-            return true;
-        }
         boolean isHidden = isHiddenMap(targetMapId);
         int townId = getTownIdForMap(targetMapId);
         if (isHidden || townId <= 0) {
@@ -561,8 +558,7 @@ public final class QuestHelpService {
         if (isHidden || townId <= 0) {
             return "需先探索此隐藏地图";
         }
-        String townName = getTownNameForMap(targetMapId);
-        return "需先访问主城【" + townName + "】";
+        return "需先访问主城";
     }
 
     public List<MapLocation> getMapsForMob(int mobId) {

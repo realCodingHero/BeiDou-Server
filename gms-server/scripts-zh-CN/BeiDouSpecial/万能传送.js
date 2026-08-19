@@ -149,12 +149,10 @@ function getMapWarpTag(mapId) {
 function checkAndWarp(mapId, cost) {
     var service = cm.getQuestHelp();
     if (service && !service.isMapWarpUnlocked(cm.getPlayer(), mapId)) {
-        var reason = service.getWarpLockReason(cm.getPlayer(), mapId);
         if (service.isHiddenMap(mapId) || service.getTownIdForMap(mapId) <= 0) {
             cm.sendOk("该地图为隐藏/特殊区域，您尚未亲自探索过！\r\n必须先亲自找到并前往该地图一次后，方可使用直达传送。");
         } else {
-            var townName = service.getTownNameForMap(mapId);
-            cm.sendOk("您尚未探索并访问过该区域的主城【#b" + townName + "#k】！\r\n请先亲自前往探索该主城后，方可解锁直达传送。");
+            cm.sendOk("您尚未探索并访问过该区域的主城！\r\n请先亲自前往探索该主城后，方可解锁直达传送。");
         }
         return false;
     }
