@@ -154,7 +154,7 @@ function showQuestList(category) {
         if (item.isCanComplete()) {
             tag = " #r[可交付]#k";
         } else if (item.isPurchasableComplete()) {
-            tag = " #d[可一键补齐]#k";
+            tag = " #g[可一键补齐]#k";
         }
         text += "#L" + item.getQuestId() + "# [Lv." + item.getMinLevel() + "] #b" + item.getQuestName() + "#k" + tag + "#l\r\n";
     }
@@ -178,7 +178,7 @@ function handleQuestListSelection(selection) {
 }
 
 /**
- * 展示指定任务的详细进度与各项操作（采用标题与操作分行、短按钮设计，彻底杜绝换行重叠）
+ * 展示指定任务的详细进度与各项操作
  */
 function showQuestDetail(questId) {
     var service = cm.getQuestHelp();
@@ -212,11 +212,11 @@ function showQuestDetail(questId) {
     var combinedCost = currentDetail.getTotalCostWithMobsAndMaterials();
 
     if (hasSyncableMobs && hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(" + combinedCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(共需: " + combinedCost + " 金币 [怪物: " + totalMobCost + " | 材料: " + totalMatCost + "])#k#l\r\n\r\n";
     } else if (hasSyncableMobs) {
-        text += "#L10000##k【 #d★ 一键同步/填充本任务全部账号怪物击杀#k 】 #d(" + totalMobCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键同步本任务全部满足条件的账号怪物击杀#k 】 #d(共需: " + totalMobCost + " 金币)#k#l\r\n\r\n";
     } else if (hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(" + totalMatCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(共需: " + totalMatCost + " 金币)#k#l\r\n\r\n";
     }
 
     var hasContent = false;
@@ -227,28 +227,16 @@ function showQuestDetail(questId) {
         text += "#e【 击杀怪物目标 】#n\r\n";
         for (var i = 0; i < mobObjs.size(); i++) {
             var mob = mobObjs.get(i);
-            var isDone = mob.isCompleted();
-            var progTag = isDone ? "#b(" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ") [已达成]#k" : "#r(" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ") [未完成]#k";
-
+            var statusTag = mob.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
             if (mob.isBoss()) {
-                text += " 目标：【#rBoss - " + mob.getMobName() + "#k】 " + progTag + "\r\n";
-                if (!isDone) {
-                    text += "   #r└─ [Boss怪物，需亲自挑战消灭]#k\r\n";
-                }
-            } else if (isDone) {
-                text += " 目标：【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 " + progTag + "\r\n";
+                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #r[Boss怪物，需亲自击杀]#k\r\n";
+            } else if (mob.isCompleted()) {
+                text += " 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + "\r\n";
+            } else if (mob.isSyncable()) {
+                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
+                text += "#L" + (150000 + i) + "#   #d└─ [账号击杀: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " | 单价: " + mob.getUnitPrice() + " 金币 | 需: " + mob.getTotalCost() + " 金币 -> 点击确认完成]#k#l\r\n";
             } else {
-                text += " 目标：【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 " + progTag + "\r\n";
-                text += "#L" + (100000 + i) + "#   #b[传送]#k #d查看野外分布地图并传送#k#l\r\n";
-                if (mob.isSyncable()) {
-                    if (mob.isFullSync()) {
-                        text += "#L" + (150000 + i) + "#   #b[补满]#k #d账号击杀 " + mob.getAccountKills() + "只 -> 消耗 " + mob.getTotalCost() + "金币补满#k#l\r\n";
-                    } else {
-                        text += "#L" + (150000 + i) + "#   #b[填充]#k #d账号击杀 " + mob.getAccountKills() + "只 -> 消耗 " + mob.getTotalCost() + "金币填充" + mob.getSyncCount() + "只#k#l\r\n";
-                    }
-                } else if (mob.getAccountKills() > 0) {
-                    text += "   #d└─ (账号历史累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " 只)#k\r\n";
-                }
+                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k #d(账号累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + ")#k#l\r\n";
             }
         }
         text += "\r\n";
@@ -260,18 +248,17 @@ function showQuestDetail(questId) {
         text += "#e【 收集道具目标 】#n\r\n";
         for (var i = 0; i < itemObjs.size(); i++) {
             var item = itemObjs.get(i);
-            var isDone = item.isCompleted();
-            var progTag = isDone ? "#b(" + item.getCurrentCount() + "/" + item.getRequiredCount() + ") [已达成]#k" : "#r(" + item.getCurrentCount() + "/" + item.getRequiredCount() + ") [未完成]#k";
+            var statusTag = item.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
             var diff = item.getRequiredCount() - item.getCurrentCount();
 
-            text += " 目标：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 " + progTag + "\r\n";
-            if (!isDone) {
-                text += "#L" + (200000 + i) + "#   #b[掉落]#k #d查看掉落怪物并传送#k#l\r\n";
-                if (item.isDeliverable()) {
-                    text += "#L" + (250000 + i) + "#   #b[购买]#k #d购买补齐 " + diff + "个 (需 " + item.getTotalPrice() + " 金币)#k#l\r\n";
-                } else {
-                    text += "   #r└─ (剧情/特殊道具需手动获取)#k\r\n";
-                }
+            if (item.isCompleted()) {
+                text += " 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + "\r\n";
+            } else if (item.isDeliverable()) {
+                var originType = item.isNativeShopItem() ? "原生商店/材料" : "怪物材料";
+                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
+                text += "#L" + (250000 + i) + "#   #d└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币 (" + originType + ")]#k#l\r\n";
+            } else {
+                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[查看掉落/传送]#k #r(特殊/剧情道具需手动获取)#k#l\r\n";
             }
         }
         text += "\r\n";
@@ -282,18 +269,12 @@ function showQuestDetail(questId) {
         hasContent = true;
         text += "#e【 NPC 导航传送 】#n\r\n";
         if (startNpc) {
-            var startMap = (startNpc.getMaps() && startNpc.getMaps().size() > 0) ? startNpc.getMaps().get(0) : null;
-            var locStr = formatLocationName(startMap);
-            var costStr = startMap && startMap.getWarpCost() > 0 ? " (费用: " + startMap.getWarpCost() + "金币)" : "";
-            text += " 接取NPC：#b" + startNpc.getNpcName() + "#k (" + locStr + ")\r\n";
-            text += "#L300001#   #b[传送]#k #d传送至接取NPC所在地图" + costStr + "#k#l\r\n";
+            var startMapText = (startNpc.getMaps() && startNpc.getMaps().size() > 0) ? startNpc.getMaps().get(0).getDisplayName() : "未知地图";
+            text += "#L300001# 接取NPC：#b" + startNpc.getNpcName() + "#k (" + startMapText + ") -> #d[传送直达]#k#l\r\n";
         }
         if (compNpc) {
-            var compMap = (compNpc.getMaps() && compNpc.getMaps().size() > 0) ? compNpc.getMaps().get(0) : null;
-            var locStr = formatLocationName(compMap);
-            var costStr = compMap && compMap.getWarpCost() > 0 ? " (费用: " + compMap.getWarpCost() + "金币)" : "";
-            text += " 交付NPC：#b" + compNpc.getNpcName() + "#k (" + locStr + ")\r\n";
-            text += "#L300002#   #b[传送]#k #d传送至交付NPC所在地图" + costStr + "#k#l\r\n";
+            var compMapText = (compNpc.getMaps() && compNpc.getMaps().size() > 0) ? compNpc.getMaps().get(0).getDisplayName() : "未知地图";
+            text += "#L300002# 交付NPC：#b" + compNpc.getNpcName() + "#k (" + compMapText + ") -> #d[传送直达]#k#l\r\n";
         }
         text += "\r\n";
     }
@@ -324,7 +305,7 @@ function handleDetailSelection(selection) {
 
         var confirmText = "#e#b【一键完成任务目标确认】#k#n\r\n\r\n"
             + "本次一键操作将包含：\r\n"
-            + " - 同步/填充本任务所有可用账号历史怪物击杀\r\n"
+            + " - 同步本任务所有满足条件的账号历史怪物击杀\r\n"
             + " - 购买补齐本任务所有可购买的普通/商店材料\r\n\r\n"
             + "本次一键结算共计消耗：\r\n"
             + " - 怪物同步金币：#r" + totalMobCost + "#k 金币\r\n"
@@ -342,32 +323,17 @@ function handleDetailSelection(selection) {
     if (selection >= 150000 && selection < 200000) {
         var index = selection - 150000;
         var mob = currentDetail.getMobObjectives().get(index);
-        var confirmText = "";
+        var diff = mob.getRequiredKills() - mob.getCurrentKills();
 
-        if (mob.isFullSync()) {
-            confirmText = "#e#b【快速完成怪物击杀确认】#k#n\r\n\r\n"
-                + "本次任务目标：\r\n"
-                + " - 目标怪物：#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k (当前进度: " + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")\r\n"
-                + " - 账号历史击杀：#b" + mob.getAccountKills() + "#k 只 (本次可直接补满: #r" + mob.getSyncCount() + "#k 只)\r\n"
-                + " - 填充后进度：#b" + mob.getRequiredKills() + "/" + mob.getRequiredKills() + " [已达成]#k\r\n\r\n"
-                + "本次快速结算将消耗：\r\n"
-                + " - 击杀单价：#r" + mob.getUnitPrice() + "#k 金币\r\n"
-                + " - 所需金币：#r" + mob.getTotalCost() + "#k 金币\r\n"
-                + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
-                + "#e是否确认支付金币并立即达成该击杀目标？#n";
-        } else {
-            var remaining = mob.getRequiredKills() - mob.getTargetKills();
-            confirmText = "#e#b【快速填充怪物击杀确认】#k#n\r\n\r\n"
-                + "本次任务目标：\r\n"
-                + " - 目标怪物：#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k (当前进度: " + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")\r\n"
-                + " - 账号历史击杀：#b" + mob.getAccountKills() + "#k 只 (本次可先填充: #r" + mob.getSyncCount() + "#k 只)\r\n"
-                + " - 填充后进度：#b" + mob.getTargetKills() + "/" + mob.getRequiredKills() + "#k (尚需手动击杀 " + remaining + " 只)\r\n\r\n"
-                + "本次快速结算将消耗：\r\n"
-                + " - 击杀单价：#r" + mob.getUnitPrice() + "#k 金币\r\n"
-                + " - 所需金币：#r" + mob.getTotalCost() + "#k 金币\r\n"
-                + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
-                + "#e是否确认支付金币并立即填充该击杀数据？#n";
-        }
+        var confirmText = "#e#b【快速完成怪物击杀确认】#k#n\r\n\r\n"
+            + "本次任务目标：\r\n"
+            + " - 击杀怪物：#r" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k x " + diff + " 只\r\n"
+            + " - 账号历史击杀：#g" + mob.getAccountKills() + "#k 只 (满足条件)\r\n\r\n"
+            + "本次快速结算将消耗：\r\n"
+            + " - 击杀单价：#r" + mob.getUnitPrice() + "#k 金币\r\n"
+            + " - 所需金币：#r" + mob.getTotalCost() + "#k 金币\r\n"
+            + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
+            + "#e是否确认支付金币并立即完成该击杀目标？#n";
 
         pendingConfirmAction = { type: 'MOB', id: mob.getMobId(), cost: mob.getTotalCost() };
         cm.sendYesNo(confirmText);
@@ -566,17 +532,6 @@ function handleMapWarp(selection) {
     }
 
     cm.dispose();
-}
-
-function formatLocationName(map) {
-    if (!map) return "未知地图";
-    var street = map.getStreetName() ? ("" + map.getStreetName()).trim() : "";
-    var name = map.getMapName() ? ("" + map.getMapName()).trim() : "";
-    if (street !== "" && name !== "" && street !== name) {
-        var combined = street + " - " + name;
-        return (combined.length <= 16) ? combined : name;
-    }
-    return (name !== "") ? name : (street !== "" ? street : "地图 (" + map.getMapId() + ")");
 }
 
 function getMapDisplayWithLock(map) {
