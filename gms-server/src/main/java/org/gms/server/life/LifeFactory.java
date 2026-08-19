@@ -365,6 +365,22 @@ public class LifeFactory {
     private static Pair<MonsterStats, List<MobAttackInfoHolder>> getMonsterStats(int mid) {
         Data monsterData = getMonsterData(mid);
         if (monsterData == null) {
+            // 兼容 QuestCountGroup 任务怪物组
+            Data groupData = data.getData("QuestCountGroup/" + mid + ".img");
+            if (groupData != null) {
+                Data info = groupData.getChildByPath("info");
+                if (info != null) {
+                    for (Data child : info.getChildren()) {
+                        int targetMobId = DataTool.getInt(child, 0);
+                        if (targetMobId > 0 && targetMobId != mid) {
+                            Pair<MonsterStats, List<MobAttackInfoHolder>> pair = getMonsterStats(targetMobId);
+                            if (pair != null) {
+                                return pair;
+                            }
+                        }
+                    }
+                }
+            }
             return null;
         }
         Data monsterInfoData = monsterData.getChildByPath("info");

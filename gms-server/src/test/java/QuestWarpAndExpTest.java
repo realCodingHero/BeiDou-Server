@@ -1,24 +1,29 @@
 import org.gms.server.quest.QuestHelpService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class QuestWarpAndExpTest {
 
+    @BeforeEach
+    public void setUp() throws Exception {
+        QuestHelpService service = QuestHelpService.getInstance();
+        Field initField = QuestHelpService.class.getDeclaredField("initialized");
+        initField.setAccessible(true);
+        ((AtomicBoolean) initField.get(service)).set(true);
+    }
+
     @Test
     public void testWarpCostCalculation() throws Exception {
         QuestHelpService service = QuestHelpService.getInstance();
-
-        // 通过反射设置 initialized = true 并注入测试连通图: 100000000(射手村: 800) <-> 100000200(训练场1) <-> 100000201(训练场2)
-        Field initField = QuestHelpService.class.getDeclaredField("initialized");
-        initField.setAccessible(true);
-        ((java.util.concurrent.atomic.AtomicBoolean) initField.get(service)).set(true);
 
         Field mapGraphField = QuestHelpService.class.getDeclaredField("mapGraph");
         mapGraphField.setAccessible(true);
@@ -170,5 +175,28 @@ public class QuestWarpAndExpTest {
         // 2. 验证 71级 vs 100级 100只任务总价对比 (75万 vs 180万)
         assertEquals(750000L, 7500L * 100);
         assertEquals(1800000L, 18000L * 100);
+    }
+
+    @Test
+    public void testMobAliasLevelResolution() throws Exception {
+        QuestHelpService service = QuestHelpService.getInstance();
+        service.addMobAlias(1110100, 9101000);
+
+        Field mobLevelCacheField = QuestHelpService.class.getDeclaredField("mobLevelCache");
+        mobLevelCacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Integer> mobLevelCache = (Map<Integer, Integer>) mobLevelCacheField.get(service);
+        mobLevelCache.put(1110100, 15);
+
+        Field mobNameField = QuestHelpService.class.getDeclaredField("mobNameCache");
+        mobNameField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, String> mobNameCache = (Map<Integer, String>) mobNameField.get(service);
+        mobNameCache.put(9101000, "绿蘑菇");
+
+        // 验证 9101000 通过别名机制解析为绿蘑菇等级 15
+        int lv = service.getMobLevel(9101000);
+        assertEquals(15, lv);
+        assertEquals(100, service.getMobKillUnitPrice(9101000));
     }
 }

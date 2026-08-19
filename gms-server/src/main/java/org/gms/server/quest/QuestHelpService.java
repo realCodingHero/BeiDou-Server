@@ -119,6 +119,7 @@ public final class QuestHelpService {
     private final Map<Integer, String> mobNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> npcNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> itemNameCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Integer> mobLevelCache = new ConcurrentHashMap<>();
     private final Map<Integer, MapLocation> mapLocationCache = new ConcurrentHashMap<>();
     private final Map<Integer, WarpCostInfo> warpCostCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<MapLocation>> mobMapsCache = new ConcurrentHashMap<>();
@@ -1081,7 +1082,10 @@ public final class QuestHelpService {
             int currentKills = parseProgress(qs.getProgress(mobId));
             boolean isBoss = MonsterInformationProvider.getInstance().isBoss(mobId);
             long accountKills = isBoss ? 0L : getAccountMobKills(player.getAccountId(), mobId);
-            int mobLevel = LifeFactory.getMonsterLevel(mobId);
+            int mobLevel = getMobLevel(mobId);
+            if (mobLevel <= 0) {
+                mobLevel = 1;
+            }
             int unitPrice = isBoss ? 0 : getMobKillUnitPrice(mobId);
             List<MapLocation> maps = getMapsForMob(mobId);
             mobObjectives.add(new MobObjective(mobId, getMobName(mobId), mobLevel, currentKills, reqCount, isBoss, accountKills, unitPrice, maps));
@@ -1167,8 +1171,58 @@ public final class QuestHelpService {
         return Math.max(20, unitPrice);
     }
 
+    public int getMobLevel(int mobId) {
+        Integer cached = mobLevelCache.get(mobId);
+        if (cached != null) {
+            return cached;
+        }
+        try {
+            int level = LifeFactory.getMonsterLevel(mobId);
+            if (level > 0) {
+                mobLevelCache.put(mobId, level);
+                return level;
+            }
+        } catch (Throwable ignored) {
+        }
+        ensureInitialized();
+        Set<Integer> aliases = mobAliasMap.get(mobId);
+        if (aliases != null) {
+            for (int aliasId : aliases) {
+                if (aliasId != mobId) {
+                    try {
+                        int lv = getMobLevel(aliasId);
+                        if (lv > 0) {
+                            mobLevelCache.put(mobId, lv);
+                            return lv;
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        }
+        String name = getMobName(mobId);
+        if (name != null && !name.isBlank() && !name.startsWith("怪物 ") && !"MISSINGNO".equals(name)) {
+            Set<Integer> sameNameIds = nameToMobIds.get(name);
+            if (sameNameIds != null) {
+                for (int otherId : sameNameIds) {
+                    if (otherId != mobId) {
+                        try {
+                            int lv = getMobLevel(otherId);
+                            if (lv > 0) {
+                                mobLevelCache.put(mobId, lv);
+                                return lv;
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
     public int getMobKillUnitPrice(int mobId) {
-        int mobLevel = LifeFactory.getMonsterLevel(mobId);
+        int mobLevel = getMobLevel(mobId);
         if (mobLevel <= 0) {
             mobLevel = 1;
         }
