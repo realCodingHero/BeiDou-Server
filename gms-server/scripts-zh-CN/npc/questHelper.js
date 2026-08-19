@@ -1,10 +1,17 @@
 /**
  * @description 任务辅助 NPC 脚本
  * 提供任务状态分类（可完成/进行中）、普通材料一键补齐（带背包空间安全校验）、
- * 杀怪目标地图传送、道具掉落怪物反查传送、起止 NPC 城镇直达
+ * 杀怪目标地图传送、道具掉落怪物反查传送、起止 NPC 城镇直达。
+ * 采用显式状态机架构，确保“结束对话/返回”在各级菜单中均能精准返回上一层界面。
  */
 
-var status = -1;
+var STATE_MAIN_MENU = 0;    // 主菜单
+var STATE_QUEST_LIST = 1;   // 任务列表（可交付 / 进行中）
+var STATE_QUEST_DETAIL = 2; // 任务详情
+var STATE_SUB_MENU = 3;     // 怪物地图列表 / 掉落怪物列表 / NPC地图列表
+var STATE_MAP_LIST = 4;     // 掉落怪物的分布地图列表
+
+var currentState = STATE_MAIN_MENU;
 var selectedCategory = 1; // 1: 可交付任务, 2: 进行中任务
 var selectedQuestId = 0;
 var currentDetail = null;
@@ -14,7 +21,7 @@ var pendingNotice = null;
 var pendingConfirmAction = null; // { type: 'ALL' | 'MOB' | 'ITEM', id: number, cost: number }
 
 function start() {
-    status = -1;
+    currentState = STATE_MAIN_MENU;
     selectedCategory = 1;
     selectedQuestId = 0;
     currentDetail = null;
@@ -22,32 +29,53 @@ function start() {
     currentMapList = null;
     pendingNotice = null;
     pendingConfirmAction = null;
-    action(1, 0, 0);
+    showMainMenu();
 }
 
 function action(mode, type, selection) {
     try {
+        // 1. 处理强行关闭 (mode === -1)
         if (mode === -1) {
             cm.dispose();
             return;
-        } else if (mode === 0) {
+        }
+
+        // 2. 处理“结束对话” / 取消 / 否 (mode === 0)
+        if (mode === 0) {
             if (pendingConfirmAction != null) {
-                // 二次确认中选择了 "否"
+                // 二次确认弹窗中选择了“否” -> 返回任务详情页
                 pendingConfirmAction = null;
-                status = 1;
-                action(1, 0, selectedQuestId);
+                currentState = STATE_QUEST_DETAIL;
+                showQuestDetail(selectedQuestId);
                 return;
             }
-            if (status <= 0) {
+
+            if (currentState === STATE_MAIN_MENU) {
+                cm.dispose();
+                return;
+            } else if (currentState === STATE_QUEST_LIST) {
+                currentState = STATE_MAIN_MENU;
+                showMainMenu();
+                return;
+            } else if (currentState === STATE_QUEST_DETAIL) {
+                currentState = STATE_QUEST_LIST;
+                showQuestList(selectedCategory);
+                return;
+            } else if (currentState === STATE_SUB_MENU) {
+                currentState = STATE_QUEST_DETAIL;
+                showQuestDetail(selectedQuestId);
+                return;
+            } else if (currentState === STATE_MAP_LIST) {
+                currentState = STATE_SUB_MENU;
+                showDropMobList(selectedItem);
+                return;
+            } else {
                 cm.dispose();
                 return;
             }
-            status--;
-        } else {
-            status++;
         }
 
-        // 处理二次确认中点击了 "是" (mode === 1)
+        // 3. 处理正常交互与二次确认“是” (mode === 1)
         if (pendingConfirmAction != null) {
             var confirmAction = pendingConfirmAction;
             pendingConfirmAction = null;
@@ -63,23 +91,22 @@ function action(mode, type, selection) {
             if (res != null) {
                 pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
             }
-            status = 1;
-            action(1, 0, selectedQuestId);
+            currentState = STATE_QUEST_DETAIL;
+            showQuestDetail(selectedQuestId);
             return;
         }
 
-        if (status === 0) {
-            showMainMenu();
-        } else if (status === 1) {
+        // 4. 根据当前状态分发正常菜单选择
+        if (currentState === STATE_MAIN_MENU) {
             handleMainMenuSelection(selection);
-        } else if (status === 2) {
+        } else if (currentState === STATE_QUEST_LIST) {
             handleQuestListSelection(selection);
-        } else if (status === 3) {
+        } else if (currentState === STATE_QUEST_DETAIL) {
             handleDetailSelection(selection);
-        } else if (status === 4) {
+        } else if (currentState === STATE_SUB_MENU) {
             handleSubSelection(selection);
-        } else if (status === 5) {
-            handleMapWarp(selection);
+        } else if (currentState === STATE_MAP_LIST) {
+            handleMapListSelection(selection);
         } else {
             cm.dispose();
         }
@@ -90,9 +117,10 @@ function action(mode, type, selection) {
 }
 
 /**
- * 步骤 0：主菜单（可交付任务 vs 进行中任务）
+ * 界面 0：主菜单（可交付任务 vs 进行中任务）
  */
 function showMainMenu() {
+    currentState = STATE_MAIN_MENU;
     var service = cm.getQuestHelp();
     if (!service) {
         cm.sendOk("任务辅助服务暂不可用。");
@@ -117,9 +145,6 @@ function showMainMenu() {
     cm.sendSimple(text);
 }
 
-/**
- * 步骤 1：处理主菜单选择
- */
 function handleMainMenuSelection(selection) {
     if (selection === 999999) {
         cm.dispose();
@@ -132,9 +157,10 @@ function handleMainMenuSelection(selection) {
 }
 
 /**
- * 展示任务列表（分类 1: 可交付, 分类 2: 进行中）
+ * 界面 1：展示任务列表（分类 1: 可交付, 分类 2: 进行中）
  */
 function showQuestList(category) {
+    currentState = STATE_QUEST_LIST;
     var service = cm.getQuestHelp();
     var list = (category === 1) ? service.getCanCompleteQuests(cm.getPlayer()) : service.getInProgressQuests(cm.getPlayer());
 
@@ -154,7 +180,7 @@ function showQuestList(category) {
         if (item.isCanComplete()) {
             tag = " #r[可交付]#k";
         } else if (item.isPurchasableComplete()) {
-            tag = " #g[可一键补齐]#k";
+            tag = " #d[可一键补齐]#k";
         }
         text += "#L" + item.getQuestId() + "# [Lv." + item.getMinLevel() + "] #b" + item.getQuestName() + "#k" + tag + "#l\r\n";
     }
@@ -163,13 +189,9 @@ function showQuestList(category) {
     cm.sendSimple(text);
 }
 
-/**
- * 步骤 2：处理从任务列表点击某个任务
- */
 function handleQuestListSelection(selection) {
     if (selection === 999999) {
-        status = -1;
-        action(1, 0, 0);
+        showMainMenu();
         return;
     }
 
@@ -178,15 +200,17 @@ function handleQuestListSelection(selection) {
 }
 
 /**
- * 展示指定任务的详细进度与各项操作
+ * 界面 2：展示指定任务的详细进度与各项操作
  */
 function showQuestDetail(questId) {
+    currentState = STATE_QUEST_DETAIL;
+    selectedQuestId = questId;
     var service = cm.getQuestHelp();
     currentDetail = service.getQuestDetailInfo(cm.getPlayer(), questId);
 
     if (!currentDetail) {
         cm.sendOk("未获取到任务详细信息，可能任务已被放弃或已完成。");
-        status = 0;
+        currentState = STATE_MAIN_MENU;
         return;
     }
 
@@ -212,11 +236,11 @@ function showQuestDetail(questId) {
     var combinedCost = currentDetail.getTotalCostWithMobsAndMaterials();
 
     if (hasSyncableMobs && hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(共需: " + combinedCost + " 金币 [怪物: " + totalMobCost + " | 材料: " + totalMatCost + "])#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(" + combinedCost + " 金币)#k#l\r\n\r\n";
     } else if (hasSyncableMobs) {
-        text += "#L10000##k【 #d★ 一键同步本任务全部满足条件的账号怪物击杀#k 】 #d(共需: " + totalMobCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键同步本任务全部满足条件的账号怪物击杀#k 】 #d(" + totalMobCost + " 金币)#k#l\r\n\r\n";
     } else if (hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(共需: " + totalMatCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(" + totalMatCost + " 金币)#k#l\r\n\r\n";
     }
 
     var hasContent = false;
@@ -227,16 +251,24 @@ function showQuestDetail(questId) {
         text += "#e【 击杀怪物目标 】#n\r\n";
         for (var i = 0; i < mobObjs.size(); i++) {
             var mob = mobObjs.get(i);
-            var statusTag = mob.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
+            var isDone = mob.isCompleted();
+            var progTag = isDone ? "#b(" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ") [已达成]#k" : "#r(" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ") [未完成]#k";
+
             if (mob.isBoss()) {
-                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #r[Boss怪物，需亲自击杀]#k\r\n";
-            } else if (mob.isCompleted()) {
-                text += " 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + "\r\n";
-            } else if (mob.isSyncable()) {
-                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
-                text += "#L" + (150000 + i) + "#   #d└─ [账号击杀: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " | 单价: " + mob.getUnitPrice() + " 金币 | 需: " + mob.getTotalCost() + " 金币 -> 点击确认完成]#k#l\r\n";
+                text += " 目标：【#rBoss - " + mob.getMobName() + "#k】 " + progTag + "\r\n";
+                if (!isDone) {
+                    text += "   #r└─ [Boss怪物，需亲自挑战消灭]#k\r\n";
+                }
+            } else if (isDone) {
+                text += " 目标：【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 " + progTag + "\r\n";
             } else {
-                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k #d(账号累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + ")#k#l\r\n";
+                text += " 目标：【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 " + progTag + "\r\n";
+                text += "#L" + (100000 + i) + "#   #b[传送]#k #d查看野外分布地图并传送#k#l\r\n";
+                if (mob.isSyncable()) {
+                    text += "#L" + (150000 + i) + "#   #b[完成]#k #d账号击杀 " + mob.getAccountKills() + "只 -> 消耗 " + mob.getTotalCost() + "金币补满#k#l\r\n";
+                } else if (mob.getAccountKills() > 0) {
+                    text += "   #d└─ (账号历史累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " 只)#k\r\n";
+                }
             }
         }
         text += "\r\n";
@@ -248,17 +280,18 @@ function showQuestDetail(questId) {
         text += "#e【 收集道具目标 】#n\r\n";
         for (var i = 0; i < itemObjs.size(); i++) {
             var item = itemObjs.get(i);
-            var statusTag = item.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
+            var isDone = item.isCompleted();
+            var progTag = isDone ? "#b(" + item.getCurrentCount() + "/" + item.getRequiredCount() + ") [已达成]#k" : "#r(" + item.getCurrentCount() + "/" + item.getRequiredCount() + ") [未完成]#k";
             var diff = item.getRequiredCount() - item.getCurrentCount();
 
-            if (item.isCompleted()) {
-                text += " 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + "\r\n";
-            } else if (item.isDeliverable()) {
-                var originType = item.isNativeShopItem() ? "原生商店/材料" : "怪物材料";
-                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
-                text += "#L" + (250000 + i) + "#   #d└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币 (" + originType + ")]#k#l\r\n";
-            } else {
-                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[查看掉落/传送]#k #r(特殊/剧情道具需手动获取)#k#l\r\n";
+            text += " 目标：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 " + progTag + "\r\n";
+            if (!isDone) {
+                text += "#L" + (200000 + i) + "#   #b[掉落]#k #d查看掉落怪物并传送#k#l\r\n";
+                if (item.isDeliverable()) {
+                    text += "#L" + (250000 + i) + "#   #b[购买]#k #d购买补齐 " + diff + "个 (需 " + item.getTotalPrice() + " 金币)#k#l\r\n";
+                } else {
+                    text += "   #r└─ (剧情/特殊道具需手动获取)#k\r\n";
+                }
             }
         }
         text += "\r\n";
@@ -269,12 +302,18 @@ function showQuestDetail(questId) {
         hasContent = true;
         text += "#e【 NPC 导航传送 】#n\r\n";
         if (startNpc) {
-            var startMapText = (startNpc.getMaps() && startNpc.getMaps().size() > 0) ? startNpc.getMaps().get(0).getDisplayName() : "未知地图";
-            text += "#L300001# 接取NPC：#b" + startNpc.getNpcName() + "#k (" + startMapText + ") -> #d[传送直达]#k#l\r\n";
+            var startMap = (startNpc.getMaps() && startNpc.getMaps().size() > 0) ? startNpc.getMaps().get(0) : null;
+            var locStr = formatLocationName(startMap);
+            var costStr = startMap && startMap.getWarpCost() > 0 ? " (费用: " + startMap.getWarpCost() + "金币)" : "";
+            text += " 接取NPC：#b" + startNpc.getNpcName() + "#k (" + locStr + ")\r\n";
+            text += "#L300001#   #b[传送]#k #d传送至接取NPC所在地图" + costStr + "#k#l\r\n";
         }
         if (compNpc) {
-            var compMapText = (compNpc.getMaps() && compNpc.getMaps().size() > 0) ? compNpc.getMaps().get(0).getDisplayName() : "未知地图";
-            text += "#L300002# 交付NPC：#b" + compNpc.getNpcName() + "#k (" + compMapText + ") -> #d[传送直达]#k#l\r\n";
+            var compMap = (compNpc.getMaps() && compNpc.getMaps().size() > 0) ? compNpc.getMaps().get(0) : null;
+            var locStr = formatLocationName(compMap);
+            var costStr = compMap && compMap.getWarpCost() > 0 ? " (费用: " + compMap.getWarpCost() + "金币)" : "";
+            text += " 交付NPC：#b" + compNpc.getNpcName() + "#k (" + locStr + ")\r\n";
+            text += "#L300002#   #b[传送]#k #d传送至交付NPC所在地图" + costStr + "#k#l\r\n";
         }
         text += "\r\n";
     }
@@ -287,13 +326,9 @@ function showQuestDetail(questId) {
     cm.sendSimple(text);
 }
 
-/**
- * 步骤 3：处理从任务目标页面的点击
- */
 function handleDetailSelection(selection) {
     if (selection === 999999) {
-        status = 0;
-        action(1, 0, selectedCategory);
+        showQuestList(selectedCategory);
         return;
     }
 
@@ -327,8 +362,8 @@ function handleDetailSelection(selection) {
 
         var confirmText = "#e#b【快速完成怪物击杀确认】#k#n\r\n\r\n"
             + "本次任务目标：\r\n"
-            + " - 击杀怪物：#r" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k x " + diff + " 只\r\n"
-            + " - 账号历史击杀：#g" + mob.getAccountKills() + "#k 只 (满足条件)\r\n\r\n"
+            + " - 击杀怪物：#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k x " + diff + " 只\r\n"
+            + " - 账号历史击杀：#b" + mob.getAccountKills() + "#k 只 (满足条件)\r\n\r\n"
             + "本次快速结算将消耗：\r\n"
             + " - 击杀单价：#r" + mob.getUnitPrice() + "#k 金币\r\n"
             + " - 所需金币：#r" + mob.getTotalCost() + "#k 金币\r\n"
@@ -360,101 +395,33 @@ function handleDetailSelection(selection) {
         return;
     }
 
-    // 击杀怪物 -> 显示怪物地图
+    // 击杀怪物 -> 显示怪物地图列表
     if (selection >= 100000 && selection < 200000) {
         var index = selection - 100000;
         var mob = currentDetail.getMobObjectives().get(index);
-        if (mob.isBoss()) {
-            cm.sendOk("怪物 【" + mob.getMobName() + "】 为 Boss 怪物，为了游戏平衡与挑战流程，已关闭直接传送至 Boss 房间的功能，请自行前往挑战！");
-            return;
-        }
-        currentMapList = mob.getMaps();
-
-        if (!currentMapList || currentMapList.size() === 0) {
-            cm.sendOk("未检索到怪物 【" + mob.getMobName() + "】 的野外分布地图。");
-            return;
-        }
-
-        var text = "#e#b怪物 【" + mob.getMobName() + "】 出现在以下地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
-        for (var i = 0; i < currentMapList.size(); i++) {
-            var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
-        }
-        text += "\r\n#L999998##b[返回任务详情]#k#l";
-        cm.sendSimple(text);
+        showMobMapList(mob);
         return;
     }
 
-    // 道具收集 -> 显示掉落怪物
+    // 道具收集 -> 显示掉落怪物列表
     if (selection >= 200000 && selection < 250000) {
         var index = selection - 200000;
         selectedItem = currentDetail.getItemObjectives().get(index);
-        var dropMobs = selectedItem.getDropMobs();
-
-        if (!dropMobs || dropMobs.size() === 0) {
-            cm.sendOk("道具 【#b" + selectedItem.getItemName() + "#k】 暂无野外怪物直接掉落数据（可能为任务剧情专有道具、箱子掉落或商店购买）。");
-            return;
-        }
-
-        var text = "#e#b掉落道具 【" + selectedItem.getItemName() + "】 的怪物列表：#k#n\r\n点击怪物查看分布地图并传送：\r\n\r\n";
-        for (var i = 0; i < dropMobs.size(); i++) {
-            var dropMob = dropMobs.get(i);
-            if (dropMob.isBoss()) {
-                text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #r[Boss怪物，已关闭直达传送]#k\r\n";
-            } else {
-                text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
-            }
-        }
-        text += "\r\n#L999998##b[返回任务详情]#k#l";
-        cm.sendSimple(text);
+        showDropMobList(selectedItem);
         return;
     }
 
     // 接取 NPC 传送
     if (selection === 300001) {
         var startNpc = currentDetail.getStartNpc();
-        currentMapList = startNpc.getMaps();
-        if (!currentMapList || currentMapList.size() === 0) {
-            cm.sendOk("未找到 NPC 【" + startNpc.getNpcName() + "】 的所在地图数据。");
-            return;
-        }
-        if (currentMapList.size() === 1) {
-            var targetMap = currentMapList.get(0);
-            tryWarpPlayer(targetMap, "已传送至接取 NPC 【" + startNpc.getNpcName() + "】 所在地图：");
-            cm.dispose();
-            return;
-        }
-        var text = "#e#b接取 NPC 【" + startNpc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
-        for (var i = 0; i < currentMapList.size(); i++) {
-            var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
-        }
-        text += "\r\n#L999998##b[返回任务详情]#k#l";
-        cm.sendSimple(text);
+        showNpcMapList(startNpc, "接取");
         return;
     }
 
     // 交付 NPC 传送
     if (selection === 300002) {
         var compNpc = currentDetail.getCompleteNpc();
-        currentMapList = compNpc.getMaps();
-        if (!currentMapList || currentMapList.size() === 0) {
-            cm.sendOk("未找到 NPC 【" + compNpc.getNpcName() + "】 的所在地图数据。");
-            return;
-        }
-        if (currentMapList.size() === 1) {
-            var targetMap = currentMapList.get(0);
-            tryWarpPlayer(targetMap, "已传送至交付 NPC 【" + compNpc.getNpcName() + "】 所在地图：");
-            cm.dispose();
-            return;
-        }
-        var text = "#e#b交付 NPC 【" + compNpc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
-        for (var i = 0; i < currentMapList.size(); i++) {
-            var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
-        }
-        text += "\r\n#L999998##b[返回任务详情]#k#l";
-        cm.sendSimple(text);
+        showNpcMapList(compNpc, "交付");
         return;
     }
 
@@ -462,12 +429,96 @@ function handleDetailSelection(selection) {
 }
 
 /**
- * 步骤 4：处理地图传送或掉落怪物详情点击
+ * 界面 3-A：展示怪物的野外分布地图
  */
+function showMobMapList(mob) {
+    if (!mob) {
+        showQuestDetail(selectedQuestId);
+        return;
+    }
+    if (mob.isBoss()) {
+        cm.sendOk("怪物 【" + mob.getMobName() + "】 为 Boss 怪物，为了游戏平衡与挑战流程，已关闭直接传送至 Boss 房间的功能，请自行前往挑战！");
+        return;
+    }
+    currentMapList = mob.getMaps();
+
+    if (!currentMapList || currentMapList.size() === 0) {
+        cm.sendOk("未检索到怪物 【" + mob.getMobName() + "】 的野外分布地图。");
+        return;
+    }
+
+    currentState = STATE_SUB_MENU;
+    var text = "#e#b怪物 【" + mob.getMobName() + "】 出现在以下地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
+    for (var i = 0; i < currentMapList.size(); i++) {
+        var map = currentMapList.get(i);
+        text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
+    }
+    text += "\r\n#L999998##b[返回任务详情]#k#l";
+    cm.sendSimple(text);
+}
+
+/**
+ * 界面 3-B：展示道具的掉落怪物列表
+ */
+function showDropMobList(item) {
+    if (!item) {
+        showQuestDetail(selectedQuestId);
+        return;
+    }
+    var dropMobs = item.getDropMobs();
+
+    if (!dropMobs || dropMobs.size() === 0) {
+        cm.sendOk("道具 【#b" + item.getItemName() + "#k】 暂无野外怪物直接掉落数据（可能为任务剧情专有道具、箱子掉落或商店购买）。");
+        return;
+    }
+
+    currentState = STATE_SUB_MENU;
+    var text = "#e#b掉落道具 【" + item.getItemName() + "】 的怪物列表：#k#n\r\n点击怪物查看分布地图并传送：\r\n\r\n";
+    for (var i = 0; i < dropMobs.size(); i++) {
+        var dropMob = dropMobs.get(i);
+        if (dropMob.isBoss()) {
+            text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #r[Boss怪物，已关闭直达传送]#k\r\n";
+        } else {
+            text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
+        }
+    }
+    text += "\r\n#L999998##b[返回任务详情]#k#l";
+    cm.sendSimple(text);
+}
+
+/**
+ * 界面 3-C：展示 NPC 的所在地图列表
+ */
+function showNpcMapList(npc, npcType) {
+    if (!npc) {
+        showQuestDetail(selectedQuestId);
+        return;
+    }
+    currentMapList = npc.getMaps();
+    if (!currentMapList || currentMapList.size() === 0) {
+        cm.sendOk("未找到 NPC 【" + npc.getNpcName() + "】 的所在地图数据。");
+        return;
+    }
+    if (currentMapList.size() === 1) {
+        var targetMap = currentMapList.get(0);
+        tryWarpPlayer(targetMap, "已传送至" + npcType + " NPC 【" + npc.getNpcName() + "】 所在地图：");
+        cm.dispose();
+        return;
+    }
+
+    currentState = STATE_SUB_MENU;
+    var text = "#e#b" + npcType + " NPC 【" + npc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
+    for (var i = 0; i < currentMapList.size(); i++) {
+        var map = currentMapList.get(i);
+        text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
+    }
+    text += "\r\n#L999998##b[返回任务详情]#k#l";
+    cm.sendSimple(text);
+}
+
 function handleSubSelection(selection) {
     if (selection === 999998) {
-        status = 1;
-        action(1, 0, selectedQuestId);
+        showQuestDetail(selectedQuestId);
         return;
     }
 
@@ -482,28 +533,15 @@ function handleSubSelection(selection) {
         return;
     }
 
-    // 点击了掉落怪物 -> 展示该怪物的地图列表
+    // 点击了掉落怪物 -> 进入界面 4：展示该怪物的分布地图列表
     if (selection >= 400000 && selection < 500000) {
         var index = selection - 400000;
-        var dropMob = selectedItem.getDropMobs().get(index);
-        if (dropMob.isBoss()) {
-            cm.sendOk("怪物 【" + dropMob.getMobName() + "】 为 Boss 怪物，为了游戏平衡与挑战流程，已关闭直接传送至 Boss 房间的功能，请自行前往挑战！");
-            return;
+        if (selectedItem && selectedItem.getDropMobs() && index < selectedItem.getDropMobs().size()) {
+            var dropMob = selectedItem.getDropMobs().get(index);
+            showDropMobMapList(dropMob);
+        } else {
+            showQuestDetail(selectedQuestId);
         }
-        currentMapList = dropMob.getMaps();
-
-        if (!currentMapList || currentMapList.size() === 0) {
-            cm.sendOk("未找到怪物 【" + dropMob.getMobName() + "】 的野外地图数据。");
-            return;
-        }
-
-        var text = "#e#b怪物 【" + dropMob.getMobName() + "】 (掉落: " + selectedItem.getItemName() + ") 分布地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
-        for (var i = 0; i < currentMapList.size(); i++) {
-            var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
-        }
-        text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
-        cm.sendSimple(text);
         return;
     }
 
@@ -511,13 +549,38 @@ function handleSubSelection(selection) {
 }
 
 /**
- * 步骤 5：处理从掉落怪物地图选择时的传送
+ * 界面 4：展示具体掉落怪物的分布地图列表
  */
-function handleMapWarp(selection) {
+function showDropMobMapList(dropMob) {
+    if (!dropMob) {
+        showDropMobList(selectedItem);
+        return;
+    }
+    if (dropMob.isBoss()) {
+        cm.sendOk("怪物 【" + dropMob.getMobName() + "】 为 Boss 怪物，为了游戏平衡与挑战流程，已关闭直接传送至 Boss 房间的功能，请自行前往挑战！");
+        return;
+    }
+    currentMapList = dropMob.getMaps();
+
+    if (!currentMapList || currentMapList.size() === 0) {
+        cm.sendOk("未找到怪物 【" + dropMob.getMobName() + "】 的野外地图数据。");
+        return;
+    }
+
+    currentState = STATE_MAP_LIST;
+    var itemName = selectedItem ? selectedItem.getItemName() : "";
+    var text = "#e#b怪物 【" + dropMob.getMobName() + "】 (掉落: " + itemName + ") 分布地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
+    for (var i = 0; i < currentMapList.size(); i++) {
+        var map = currentMapList.get(i);
+        text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
+    }
+    text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
+    cm.sendSimple(text);
+}
+
+function handleMapListSelection(selection) {
     if (selection === 999997) {
-        // 返回掉落怪物列表
-        status = 2;
-        action(1, 0, 200000);
+        showDropMobList(selectedItem);
         return;
     }
 
@@ -532,6 +595,17 @@ function handleMapWarp(selection) {
     }
 
     cm.dispose();
+}
+
+function formatLocationName(map) {
+    if (!map) return "未知地图";
+    var street = map.getStreetName() ? ("" + map.getStreetName()).trim() : "";
+    var name = map.getMapName() ? ("" + map.getMapName()).trim() : "";
+    if (street !== "" && name !== "" && street !== name) {
+        var combined = street + " - " + name;
+        return (combined.length <= 16) ? combined : name;
+    }
+    return (name !== "") ? name : (street !== "" ? street : "地图 (" + map.getMapId() + ")");
 }
 
 function getMapDisplayWithLock(map) {
