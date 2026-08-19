@@ -129,6 +129,9 @@ public final class QuestHelpService {
     private final Map<Integer, Integer> nativeShopItemPrices = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> nativeShopItemNpcs = new ConcurrentHashMap<>();
     private final Map<Integer, Map<Integer, Long>> accountMobKillsCache = new ConcurrentHashMap<>();
+    private final Set<Integer> worldMapMaps = ConcurrentHashMap.newKeySet();
+    private final Map<Integer, Set<Integer>> characterVisitedMapsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Boolean> hiddenMapCache = new ConcurrentHashMap<>();
     private final java.util.concurrent.ExecutorService dbExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
@@ -243,8 +246,43 @@ public final class QuestHelpService {
             log.warn("Failed to load native shops for quest help service", e);
         }
 
-        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} shop items, {} named mobs",
-                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size());
+        // 5. 加载 WorldMap 世界地图包含的地图 ID 列表
+        try {
+            DataProvider mapSource = DataProviderFactory.getDataProvider(WZFiles.MAP);
+            if (mapSource != null && mapSource.getRoot() != null) {
+                for (DataDirectoryEntry subDir : mapSource.getRoot().getSubdirectories()) {
+                    if ("WorldMap".equalsIgnoreCase(subDir.getName())) {
+                        for (DataFileEntry file : subDir.getFiles()) {
+                            if (file.getName().endsWith(".img")) {
+                                String imgPath = "WorldMap/" + file.getName();
+                                Data wmImg = mapSource.getData(imgPath);
+                                if (wmImg != null) {
+                                    Data mapList = wmImg.getChildByPath("MapList");
+                                    if (mapList != null) {
+                                        for (Data entry : mapList.getChildren()) {
+                                            Data mapNo = entry.getChildByPath("mapNo");
+                                            if (mapNo != null) {
+                                                for (Data num : mapNo.getChildren()) {
+                                                    int mid = DataTool.getInt(num, -1);
+                                                    if (mid > 0) {
+                                                        worldMapMaps.add(mid);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to index WorldMap maps for quest help service", e);
+        }
+
+        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} shop items, {} named mobs, {} worldmap maps",
+                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size(), worldMapMaps.size());
     }
 
     private void scanDir(DataProvider mapSource, DataEntity entity) {
@@ -394,7 +432,7 @@ public final class QuestHelpService {
         });
     }
 
-    private String getTownNameSafely(int mapId) {
+    public String getTownNameSafely(int mapId) {
         try {
             String townName = MapFactory.loadPlaceName(mapId);
             if (townName == null || townName.isBlank()) {
@@ -406,6 +444,125 @@ public final class QuestHelpService {
         } catch (Throwable ignored) {
         }
         return "地图 " + mapId;
+    }
+
+    public void recordMapVisited(int characterId, int mapId) {
+        if (characterId <= 0 || mapId <= 0) {
+            return;
+        }
+        Set<Integer> visited = characterVisitedMapsCache.computeIfAbsent(characterId, this::loadCharacterVisitedMaps);
+        if (visited.add(mapId)) {
+            Thread.ofVirtual().start(() -> {
+                try (Connection con = DatabaseConnection.getConnection();
+                     PreparedStatement ps = con.prepareStatement(
+                             "INSERT IGNORE INTO character_visited_maps (character_id, map_id) VALUES (?, ?)")) {
+                    ps.setInt(1, characterId);
+                    ps.setInt(2, mapId);
+                    ps.executeUpdate();
+                } catch (SQLException e) {
+                    log.warn("Failed to record visited map {} for character {}", mapId, characterId, e);
+                }
+            });
+        }
+    }
+
+    public boolean isMapVisited(int characterId, int mapId) {
+        return getVisitedMaps(characterId).contains(mapId);
+    }
+
+    public Set<Integer> getVisitedMaps(int characterId) {
+        return characterVisitedMapsCache.computeIfAbsent(characterId, this::loadCharacterVisitedMaps);
+    }
+
+    private Set<Integer> loadCharacterVisitedMaps(int characterId) {
+        Set<Integer> maps = ConcurrentHashMap.newKeySet();
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT map_id FROM character_visited_maps WHERE character_id = ?")) {
+            ps.setInt(1, characterId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    maps.add(rs.getInt("map_id"));
+                }
+            }
+        } catch (SQLException e) {
+            log.warn("Failed to load visited maps for character {}", characterId, e);
+        }
+        return maps;
+    }
+
+    /**
+     * 判断地图是否为隐藏地图（或在世界地图中无法通过按 W 键查看大地图的区域）
+     */
+    public boolean isHiddenMap(int mapId) {
+        return hiddenMapCache.computeIfAbsent(mapId, id -> {
+            ensureInitialized();
+            if (worldMapMaps.contains(id)) {
+                return false;
+            }
+            String street = MapFactory.loadStreetName(id);
+            if (street != null && !street.isBlank()) {
+                if (street.contains("隐藏地图") || street.contains("隐藏") || street.equalsIgnoreCase("Hidden Street")) {
+                    return true;
+                }
+            }
+            String place = MapFactory.loadPlaceName(id);
+            if (place != null && !place.isBlank()) {
+                if (place.contains("隐藏地图") || place.contains("隐藏") || place.equalsIgnoreCase("Hidden Street")) {
+                    return true;
+                }
+            }
+            // 若该地图未登记在任何世界地图中且不是主城本身，则判定为无法在世界地图查看的隐藏/特殊区域
+            return !TOWN_PRICES.containsKey(id);
+        });
+    }
+
+    public int getTownIdForMap(int targetMapId) {
+        WarpCostInfo costInfo = calculateWarpCost(targetMapId);
+        return costInfo.getNearestTownId();
+    }
+
+    public String getTownNameForMap(int targetMapId) {
+        WarpCostInfo costInfo = calculateWarpCost(targetMapId);
+        return costInfo.getNearestTownName();
+    }
+
+    /**
+     * 判定指定角色是否已解锁传送至目标地图的权限
+     * 规则：
+     * 1. GM 角色全免，无限制；
+     * 2. 隐藏地图（或未绑定任何主城的孤立地图）：当且仅当玩家亲自访问过该地图自身；
+     * 3. 常规地图（野外地图 / 主城自身）：当且仅当玩家访问过该地图所属的主城。
+     */
+    public boolean isMapWarpUnlocked(Character player, int targetMapId) {
+        if (player == null) {
+            return false;
+        }
+        if (player.isGM()) {
+            return true;
+        }
+        boolean isHidden = isHiddenMap(targetMapId);
+        int townId = getTownIdForMap(targetMapId);
+        if (isHidden || townId <= 0) {
+            return isMapVisited(player.getId(), targetMapId);
+        }
+        return isMapVisited(player.getId(), townId);
+    }
+
+    /**
+     * 获取目标地图未解锁的原因描述
+     */
+    public String getWarpLockReason(Character player, int targetMapId) {
+        if (isMapWarpUnlocked(player, targetMapId)) {
+            return null;
+        }
+        boolean isHidden = isHiddenMap(targetMapId);
+        int townId = getTownIdForMap(targetMapId);
+        if (isHidden || townId <= 0) {
+            return "需先探索此隐藏地图";
+        }
+        String townName = getTownNameForMap(targetMapId);
+        return "需先访问主城【" + townName + "】";
     }
 
     public List<MapLocation> getMapsForMob(int mobId) {

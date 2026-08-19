@@ -1327,6 +1327,7 @@ public class Character extends AbstractCharacterObject {
     }
 
     private void eventAfterChangedMap(int map) {
+        org.gms.server.quest.QuestHelpService.getInstance().recordMapVisited(this.id, map);
         EventInstanceManager eim = getEventInstance();
         if (eim != null) {
             eim.afterChangedMap(this, map);
