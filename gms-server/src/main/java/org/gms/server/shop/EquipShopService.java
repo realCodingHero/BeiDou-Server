@@ -42,6 +42,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 装备商店服务：提供分类装备管理、非现金过滤、职业匹配与升序等级排序
@@ -109,14 +111,14 @@ public class EquipShopService {
         }
     }
 
-    private final Map<Integer, List<EquipEntry>> categoryEquips = new HashMap<>();
-    private volatile boolean initialized = false;
+    private final Map<Integer, List<EquipEntry>> categoryEquips = new ConcurrentHashMap<>();
+    private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     private EquipShopService() {
     }
 
-    public synchronized void initialize() {
-        if (initialized) {
+    public void initialize() {
+        if (!initialized.compareAndSet(false, true)) {
             return;
         }
         long startTime = System.currentTimeMillis();
@@ -124,51 +126,50 @@ public class EquipShopService {
         DataProvider equipData = DataProviderFactory.getDataProvider(WZFiles.CHARACTER);
         DataDirectoryEntry root = equipData.getRoot();
 
-        Map<Integer, List<EquipEntry>> tempMap = new HashMap<>();
+        Map<Integer, List<EquipEntry>> tempMap = new ConcurrentHashMap<>();
         for (int i = 1; i <= 12; i++) {
-            tempMap.put(i, new ArrayList<>());
+            tempMap.put(i, Collections.synchronizedList(new ArrayList<>()));
         }
 
-        int totalIndexed = 0;
-        for (DataDirectoryEntry subDir : root.getSubdirectories()) {
+        root.getSubdirectories().parallelStream().forEach(subDir -> {
             String dirName = subDir.getName();
             if (!isEquipFolder(dirName)) {
-                continue;
+                return;
             }
-            for (DataFileEntry file : subDir.getFiles()) {
+            subDir.getFiles().parallelStream().forEach(file -> {
                 String fileName = file.getName();
                 if (!fileName.endsWith(".img")) {
-                    continue;
+                    return;
                 }
                 String idStr = fileName.substring(0, fileName.length() - 4);
                 try {
                     int itemId = Integer.parseInt(idStr);
                     int category = getCategoryByItemId(itemId);
                     if (category == 0) {
-                        continue;
+                        return;
                     }
 
                     Data itemNode = equipData.getData(subDir.getName() + "/" + fileName);
                     if (itemNode == null) {
-                        continue;
+                        return;
                     }
                     Data info = itemNode.getChildByPath("info");
                     if (info == null) {
-                        continue;
+                        return;
                     }
 
                     int cash = org.gms.provider.DataTool.getInt("cash", info, 0);
                     if (cash == 1) {
-                        continue;
+                        return;
                     }
 
                     String name = ii.getName(itemId);
                     if (name == null || name.trim().isEmpty() || name.equals("NO-NAME") || name.startsWith("??")) {
-                        continue;
+                        return;
                     }
 
                     if (isExcludedEquip(itemId, name, info, ii)) {
-                        continue;
+                        return;
                     }
 
                     int reqLevel = org.gms.provider.DataTool.getInt("reqLevel", info, 0);
@@ -183,21 +184,22 @@ public class EquipShopService {
 
                     EquipEntry entry = new EquipEntry(itemId, name, reqLevel, reqJob, price, category);
                     tempMap.get(category).add(entry);
-                    totalIndexed++;
                 } catch (NumberFormatException ignored) {
                 } catch (Exception e) {
                     log.debug("Failed parsing equip file {}", fileName, e);
                 }
-            }
-        }
+            });
+        });
 
+        int totalIndexed = 0;
         // 按需求等级升序排列，相同等级按 itemId 排序
         for (Map.Entry<Integer, List<EquipEntry>> e : tempMap.entrySet()) {
-            e.getValue().sort(Comparator.comparingInt(EquipEntry::getReqLevel).thenComparingInt(EquipEntry::getItemId));
-            categoryEquips.put(e.getKey(), Collections.unmodifiableList(e.getValue()));
+            List<EquipEntry> list = new ArrayList<>(e.getValue());
+            list.sort(Comparator.comparingInt(EquipEntry::getReqLevel).thenComparingInt(EquipEntry::getItemId));
+            categoryEquips.put(e.getKey(), Collections.unmodifiableList(list));
+            totalIndexed += list.size();
         }
 
-        initialized = true;
         log.info("EquipShopService initialized {} regular equipment items across 12 categories in {}ms",
                 totalIndexed, System.currentTimeMillis() - startTime);
     }
@@ -387,7 +389,7 @@ public class EquipShopService {
     }
 
     public boolean openShop(Client c, int categoryId, int subType, int minLevel, int maxLevel) {
-        if (!initialized) {
+        if (!initialized.get()) {
             initialize();
         }
 
