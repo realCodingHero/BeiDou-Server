@@ -130,6 +130,8 @@ public final class QuestHelpService {
     private final Map<Integer, Integer> nativeShopItemPrices = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> nativeShopItemNpcs = new ConcurrentHashMap<>();
     private final Map<Integer, Map<Integer, Long>> accountMobKillsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Integer> mapToReturnMap = new ConcurrentHashMap<>();
+    private final Map<Integer, String> mapToMapMark = new ConcurrentHashMap<>();
     private final Set<Integer> worldMapMaps = ConcurrentHashMap.newKeySet();
     private final Map<Integer, Set<Integer>> characterVisitedMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> hiddenMapCache = new ConcurrentHashMap<>();
@@ -318,6 +320,18 @@ public final class QuestHelpService {
             return;
         }
 
+        Data infoData = mapData.getChildByPath("info");
+        if (infoData != null) {
+            int returnMap = DataTool.getInt("returnMap", infoData, -1);
+            if (returnMap > 0 && returnMap != 999999999) {
+                mapToReturnMap.put(mapId, returnMap);
+            }
+            String mapMark = DataTool.getString("mapMark", infoData, null);
+            if (mapMark != null && !mapMark.isBlank()) {
+                mapToMapMark.put(mapId, mapMark);
+            }
+        }
+
         Data lifeData = mapData.getChildByPath("life");
         if (lifeData != null) {
             for (Data child : lifeData.getChildren()) {
@@ -391,7 +405,24 @@ public final class QuestHelpService {
                 return new WarpCostInfo(mapId, mapId, townName, 0, townPrice, townPrice);
             }
 
-            // 2. BFS 寻找距离最近的主城
+            // 2. 优先通过 WZ 原生定义的 returnMap（官方回城点）权威寻找所属主城
+            int canonicalTownId = -1;
+            int currReturn = mapToReturnMap.getOrDefault(mapId, -1);
+            int depth = 0;
+            while (currReturn > 0 && currReturn != 999999999 && depth < 10) {
+                if (TOWN_PRICES.containsKey(currReturn)) {
+                    canonicalTownId = currReturn;
+                    break;
+                }
+                int nextReturn = mapToReturnMap.getOrDefault(currReturn, -1);
+                if (nextReturn == currReturn || nextReturn <= 0) {
+                    break;
+                }
+                currReturn = nextReturn;
+                depth++;
+            }
+
+            // 3. BFS 寻找距离最近的主城及跳数
             Queue<Integer> queue = new ArrayDeque<>();
             Map<Integer, Integer> visitedDist = new HashMap<>();
             queue.add(mapId);
@@ -405,9 +436,17 @@ public final class QuestHelpService {
                 int dist = visitedDist.get(curr);
 
                 if (curr != mapId && TOWN_PRICES.containsKey(curr)) {
-                    foundTownId = curr;
-                    foundDist = dist;
-                    break;
+                    if (canonicalTownId != -1) {
+                        if (curr == canonicalTownId) {
+                            foundTownId = curr;
+                            foundDist = dist;
+                            break;
+                        }
+                    } else {
+                        foundTownId = curr;
+                        foundDist = dist;
+                        break;
+                    }
                 }
 
                 Set<Integer> neighbors = mapGraph.get(curr);
@@ -421,14 +460,17 @@ public final class QuestHelpService {
                 }
             }
 
-            if (foundTownId != -1) {
-                int basePrice = TOWN_PRICES.get(foundTownId);
-                String townName = getTownNameSafely(foundTownId);
-                int totalCost = basePrice + (int) Math.floor(basePrice * 0.5 * foundDist);
-                return new WarpCostInfo(mapId, foundTownId, townName, foundDist, basePrice, totalCost);
+            int resolvedTownId = (canonicalTownId != -1) ? canonicalTownId : foundTownId;
+            int resolvedDist = (foundDist != -1) ? foundDist : 1;
+
+            if (resolvedTownId != -1 && TOWN_PRICES.containsKey(resolvedTownId)) {
+                int basePrice = TOWN_PRICES.get(resolvedTownId);
+                String townName = getTownNameSafely(resolvedTownId);
+                int totalCost = basePrice + (int) Math.floor(basePrice * 0.5 * resolvedDist);
+                return new WarpCostInfo(mapId, resolvedTownId, townName, resolvedDist, basePrice, totalCost);
             }
 
-            // 3. 孤立/未知主城：默认 5000 金币
+            // 4. 孤立/未知主城：默认 5000 金币
             return new WarpCostInfo(mapId, -1, "未知主城", 0, DEFAULT_TOWN_PRICE, DEFAULT_TOWN_PRICE);
         });
     }
@@ -493,28 +535,24 @@ public final class QuestHelpService {
     }
 
     /**
-     * 判断地图是否为隐藏地图（或在世界地图中无法通过按 W 键查看大地图的区域）
+     * 判断地图是否为隐藏地图（仅根据街名/地名中包含隐藏地图/Hidden Street判定）
      */
     public boolean isHiddenMap(int mapId) {
         return hiddenMapCache.computeIfAbsent(mapId, id -> {
             ensureInitialized();
-            if (worldMapMaps.contains(id)) {
-                return false;
-            }
             String street = MapFactory.loadStreetName(id);
             if (street != null && !street.isBlank()) {
-                if (street.contains("隐藏地图") || street.contains("隐藏") || street.equalsIgnoreCase("Hidden Street")) {
+                if (street.contains("隐藏地图") || street.contains("隐藏街道") || street.contains("隐藏") || street.equalsIgnoreCase("Hidden Street")) {
                     return true;
                 }
             }
             String place = MapFactory.loadPlaceName(id);
             if (place != null && !place.isBlank()) {
-                if (place.contains("隐藏地图") || place.contains("隐藏") || place.equalsIgnoreCase("Hidden Street")) {
+                if (place.contains("隐藏地图") || place.contains("隐藏街道") || place.contains("隐藏") || place.equalsIgnoreCase("Hidden Street")) {
                     return true;
                 }
             }
-            // 若该地图未登记在任何世界地图中且不是主城本身，则判定为无法在世界地图查看的隐藏/特殊区域
-            return !TOWN_PRICES.containsKey(id);
+            return false;
         });
     }
 
@@ -538,6 +576,12 @@ public final class QuestHelpService {
     public boolean isMapWarpUnlocked(Character player, int targetMapId) {
         if (player == null) {
             return false;
+        }
+        if (player.isGM()) {
+            return true;
+        }
+        if (player.getMapId() > 0) {
+            recordMapVisited(player.getId(), player.getMapId());
         }
         boolean isHidden = isHiddenMap(targetMapId);
         int townId = getTownIdForMap(targetMapId);
