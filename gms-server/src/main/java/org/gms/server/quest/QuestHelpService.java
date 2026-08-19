@@ -1288,32 +1288,38 @@ public final class QuestHelpService {
         if (MonsterInformationProvider.getInstance().isBoss(mobId)) {
             return new DeliveryResult(false, "该怪物属于 Boss 怪物，不支持账号历史共享，需亲自击杀！", 0);
         }
-        long accountKills = getAccountMobKills(player.getAccountId(), mobId);
-        if (accountKills < reqCount) {
-            return new DeliveryResult(false, "您的账号历史击杀数不足（已击杀: " + accountKills + "/" + reqCount + "），无法同步！", 0);
-        }
+        long totalAccountKills = getAccountMobKills(player.getAccountId(), mobId);
         int currentKills = parseProgress(qs.getProgress(mobId));
         if (currentKills >= reqCount) {
-            return new DeliveryResult(true, "该怪物击杀目标已达成（" + currentKills + "/" + reqCount + "），无需同步！", 0);
+            return new DeliveryResult(true, "该怪物击杀目标已达成（" + currentKills + "/" + reqCount + "），无需购买！", 0);
         }
 
+        int availableKills = (int) Math.max(0, Math.min(Integer.MAX_VALUE, totalAccountKills - currentKills));
         int neededKills = reqCount - currentKills;
-        long totalCost = calculateMobKillCost(mobId, neededKills);
+        int purchasableKills = Math.min(neededKills, availableKills);
+
+        if (purchasableKills <= 0) {
+            return new DeliveryResult(false, "您的账号历史可用击杀数不足（可用: 0/" + totalAccountKills + "），请在游戏中击杀怪物！", 0);
+        }
+
+        int unitPrice = getMobKillUnitPrice(mobId);
+        long totalCost = (long) unitPrice * purchasableKills;
         if (totalCost > 0) {
             if (player.getMeso() < totalCost) {
-                return new DeliveryResult(false, "您的金币不足！本次快速同步需消耗 #r" + totalCost + "#k 金币，您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
+                return new DeliveryResult(false, "您的金币不足！本次购买 " + purchasableKills + " 只击杀需消耗 #r" + totalCost + "#k 金币（" + purchasableKills + "只 * " + unitPrice + "金币/只），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
             }
             player.gainMeso(-(int) totalCost, true, false, true);
         }
 
-        qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(reqCount), '0', 3));
+        int newKills = currentKills + purchasableKills;
+        qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(newKills), '0', 3));
         player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, false);
         if (qs.getInfoNumber() > 0) {
             player.announceUpdateQuest(DelayedQuestUpdate.UPDATE, qs, true);
         }
 
-        int unitPrice = getMobKillUnitPrice(mobId);
-        return new DeliveryResult(true, "已扣除 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），成功应用账号历史击杀记录，【#b" + getMobName(mobId) + "#k】击杀目标已直接同步达成（" + reqCount + "/" + reqCount + "）！", neededKills);
+        String msg = "已扣除 #r" + totalCost + "#k 金币（" + purchasableKills + "只 * " + unitPrice + "金币/只 = " + totalCost + " 金币），成功购买并注入 #b" + purchasableKills + "#k 只击杀记录，【#b" + getMobName(mobId) + "#k】当前进度已更新为（" + newKills + "/" + reqCount + "）！";
+        return new DeliveryResult(true, msg, purchasableKills);
     }
 
     public DeliveryResult deliverQuestMaterial(Character player, int questId, int itemId) {
@@ -1498,6 +1504,8 @@ public final class QuestHelpService {
         int unsyncedMobCount = 0;
         boolean questUpdated = false;
 
+        Map<Integer, Integer> mobsToSync = new HashMap<>();
+        long totalMobCost = 0L;
         MonsterInformationProvider mip = MonsterInformationProvider.getInstance();
         for (Map.Entry<Integer, Integer> entry : reqMobs.entrySet()) {
             int mobId = entry.getKey();
@@ -1508,14 +1516,32 @@ public final class QuestHelpService {
                     bossMobCount++;
                 } else {
                     long accKills = getAccountMobKills(player.getAccountId(), mobId);
-                    if (accKills >= req) {
-                        qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(req), '0', 3));
-                        syncedMobCount++;
-                        questUpdated = true;
+                    int avail = (int) Math.max(0, Math.min(Integer.MAX_VALUE, accKills - cur));
+                    int purchasable = Math.min(req - cur, avail);
+                    if (purchasable > 0) {
+                        mobsToSync.put(mobId, purchasable);
+                        int unitPrice = getMobKillUnitPrice(mobId);
+                        totalMobCost += (long) unitPrice * purchasable;
                     } else {
                         unsyncedMobCount++;
                     }
                 }
+            }
+        }
+
+        if (totalMobCost > 0) {
+            if (totalMobCost > Integer.MAX_VALUE || player.getMeso() < totalMobCost) {
+                return new DeliveryResult(false, "您的金币不足！一键同步怪物击杀共需 #r" + totalMobCost + "#k 金币，您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
+            }
+            player.gainMeso(-(int) totalMobCost, true, false, true);
+            for (Map.Entry<Integer, Integer> entry : mobsToSync.entrySet()) {
+                int mobId = entry.getKey();
+                int purchasable = entry.getValue();
+                int cur = parseProgress(qs.getProgress(mobId));
+                int newKills = cur + purchasable;
+                qs.setProgress(mobId, StringUtil.getLeftPaddedStr(Integer.toString(newKills), '0', 3));
+                syncedMobCount += purchasable;
+                questUpdated = true;
             }
         }
 
@@ -1533,7 +1559,7 @@ public final class QuestHelpService {
 
         StringBuilder sb = new StringBuilder();
         if (syncedMobCount > 0) {
-            sb.append("★ 成功为您同步达成 #b").append(syncedMobCount).append("#k 项账号历史怪物击杀目标！\r\n\r\n");
+            sb.append("★ 已扣除 #r").append(totalMobCost).append("#k 金币，成功为您同步注入 #b").append(syncedMobCount).append("#k 只账号历史怪物击杀！\r\n\r\n");
         }
         if (itemResult != null) {
             sb.append(itemResult.getMessage());
@@ -1543,7 +1569,7 @@ public final class QuestHelpService {
             sb.append("\r\n#r注：尚有 ").append(bossMobCount).append(" 项 Boss 击杀目标需亲自挑战。#k");
         }
         if (unsyncedMobCount > 0) {
-            sb.append("\r\n#r注：尚有 ").append(unsyncedMobCount).append(" 项怪物击杀账号历史累计数量未达标，需手动消灭。#k");
+            sb.append("\r\n#r注：尚有 ").append(unsyncedMobCount).append(" 项怪物击杀无可用账号历史记录，需手动消灭。#k");
         }
 
         int totalCount = syncedMobCount + (itemResult != null ? itemResult.getTotalItemsDelivered() : 0);
@@ -1812,24 +1838,30 @@ public final class QuestHelpService {
         private final int currentKills;
         private final int requiredKills;
         private final boolean boss;
-        private final long accountKills;
+        private final long totalAccountKills;
+        private final int availableKills;
+        private final int purchasableKills;
         private final boolean syncable;
         private final int unitPrice;
         private final long totalCost;
         private final List<MapLocation> maps;
 
-        public MobObjective(int mobId, String mobName, int mobLevel, int currentKills, int requiredKills, boolean boss, long accountKills, int unitPrice, List<MapLocation> maps) {
+        public MobObjective(int mobId, String mobName, int mobLevel, int currentKills, int requiredKills, boolean boss, long totalAccountKills, int unitPrice, List<MapLocation> maps) {
             this.mobId = mobId;
             this.mobName = mobName;
             this.mobLevel = mobLevel;
             this.currentKills = currentKills;
             this.requiredKills = requiredKills;
             this.boss = boss;
-            this.accountKills = accountKills;
-            this.syncable = !boss && currentKills < requiredKills && accountKills >= requiredKills;
-            this.unitPrice = unitPrice;
+            this.totalAccountKills = totalAccountKills;
+            int avail = !boss ? (int) Math.max(0, Math.min(Integer.MAX_VALUE, totalAccountKills - currentKills)) : 0;
             int needed = Math.max(0, requiredKills - currentKills);
-            this.totalCost = (long) unitPrice * needed;
+            int purchasable = Math.min(needed, avail);
+            this.availableKills = avail;
+            this.purchasableKills = purchasable;
+            this.syncable = purchasable > 0;
+            this.unitPrice = unitPrice;
+            this.totalCost = (long) unitPrice * purchasable;
             this.maps = maps != null ? maps : Collections.emptyList();
         }
 
@@ -1858,10 +1890,26 @@ public final class QuestHelpService {
         }
 
         public long getAccountKills() {
-            return accountKills;
+            return totalAccountKills;
+        }
+
+        public long getTotalAccountKills() {
+            return totalAccountKills;
+        }
+
+        public int getAvailableKills() {
+            return availableKills;
+        }
+
+        public int getPurchasableKills() {
+            return purchasableKills;
         }
 
         public boolean isSyncable() {
+            return syncable;
+        }
+
+        public boolean isPurchasable() {
             return syncable;
         }
 

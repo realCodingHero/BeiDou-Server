@@ -199,4 +199,53 @@ public class QuestWarpAndExpTest {
         assertEquals(15, lv);
         assertEquals(100, service.getMobKillUnitPrice(9101000));
     }
+
+    @Test
+    public void testPartialMobKillPurchasingLogic() {
+        // 场景 1：未买之前 (0/20, 账号历史 14) -> 可用 14, 可买 14, 费用 14 * 50 = 700
+        QuestHelpService.MobObjective mob1 = new QuestHelpService.MobObjective(
+                100100, "红蜗牛", 4, 0, 20, false, 14, 50, null
+        );
+        assertEquals(14, mob1.getAvailableKills());
+        assertEquals(14, mob1.getPurchasableKills());
+        assertEquals(700L, mob1.getTotalCost());
+        assertEquals(true, mob1.isPurchasable());
+        assertEquals(false, mob1.isCompleted());
+
+        // 场景 2：购买 14 只之后 (14/20, 账号历史 14) -> 可用 0, 可买 0, 费用 0
+        QuestHelpService.MobObjective mob2 = new QuestHelpService.MobObjective(
+                100100, "红蜗牛", 4, 14, 20, false, 14, 50, null
+        );
+        assertEquals(0, mob2.getAvailableKills());
+        assertEquals(0, mob2.getPurchasableKills());
+        assertEquals(0L, mob2.getTotalCost());
+        assertEquals(false, mob2.isPurchasable());
+        assertEquals(false, mob2.isCompleted());
+
+        // 场景 3：他号又打了 1 只 (14/20, 账号历史 15) -> 可用 1, 可买 1, 费用 1 * 50 = 50
+        QuestHelpService.MobObjective mob3 = new QuestHelpService.MobObjective(
+                100100, "红蜗牛", 4, 14, 20, false, 15, 50, null
+        );
+        assertEquals(1, mob3.getAvailableKills());
+        assertEquals(1, mob3.getPurchasableKills());
+        assertEquals(50L, mob3.getTotalCost());
+        assertEquals(true, mob3.isPurchasable());
+
+        // 场景 4：历史击杀超出需求 (14/20, 账号历史 30) -> 可用 16, 仅买余下 6 只, 费用 6 * 50 = 300
+        QuestHelpService.MobObjective mob4 = new QuestHelpService.MobObjective(
+                100100, "红蜗牛", 4, 14, 20, false, 30, 50, null
+        );
+        assertEquals(16, mob4.getAvailableKills());
+        assertEquals(6, mob4.getPurchasableKills());
+        assertEquals(300L, mob4.getTotalCost());
+        assertEquals(true, mob4.isPurchasable());
+
+        // 场景 5：Boss 怪物不可购买
+        QuestHelpService.MobObjective bossMob = new QuestHelpService.MobObjective(
+                8800000, "扎昆", 140, 0, 1, true, 10, 65000, null
+        );
+        assertEquals(0, bossMob.getAvailableKills());
+        assertEquals(0, bossMob.getPurchasableKills());
+        assertEquals(false, bossMob.isPurchasable());
+    }
 }

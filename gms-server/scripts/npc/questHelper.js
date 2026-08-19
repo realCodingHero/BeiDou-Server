@@ -264,10 +264,16 @@ function showQuestDetail(questId) {
                 text += " 消灭 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 " + progTag + "\r\n\r\n";
             } else {
                 text += "#L" + (100000 + i) + "# 消灭 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (#r" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + "#k) -> #d[传送]#k#l\r\n";
-                if (mob.isSyncable()) {
-                    text += "#L" + (150000 + i) + "#   └─ #d[账号历史: " + mob.getAccountKills() + "只 -> 消耗 " + mob.getTotalCost() + "金币补满]#k#l\r\n";
-                } else if (mob.getAccountKills() > 0) {
-                    text += "#L" + (100000 + i) + "#   └─ #d(账号累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " 只，需手动消灭)#k#l\r\n";
+                if (mob.isPurchasable()) {
+                    var needed = mob.getRequiredKills() - mob.getCurrentKills();
+                    if (mob.getPurchasableKills() >= needed) {
+                        text += "#L" + (150000 + i) + "#   └─ #d[可用/历史总击杀数:" + mob.getAvailableKills() + "/" + mob.getTotalAccountKills() + " ,消耗 " + mob.getTotalCost() + "金币补齐余下全部" + mob.getPurchasableKills() + "只]#k#l\r\n";
+                    } else {
+                        text += "#L" + (150000 + i) + "#   └─ #d[可用/历史总击杀数:" + mob.getAvailableKills() + "/" + mob.getTotalAccountKills() + " ,消耗 " + mob.getTotalCost() + "金币获得" + mob.getPurchasableKills() + "只击杀]#k#l\r\n";
+                    }
+                } else {
+                    var needed = mob.getRequiredKills() - mob.getCurrentKills();
+                    text += "#L" + (100000 + i) + "#   └─ #d(可用/历史总击杀数:0/" + mob.getTotalAccountKills() + " ,需手动消灭剩余 " + needed + "只)#k#l\r\n";
                 }
                 text += "\r\n";
             }
@@ -339,7 +345,7 @@ function handleDetailSelection(selection) {
 
         var confirmText = "#e#b【一键完成任务目标确认】#k#n\r\n\r\n"
             + "本次一键操作将包含：\r\n"
-            + " - 同步本任务所有满足条件的账号历史怪物击杀\r\n"
+            + " - 同步本任务所有可用的账号历史怪物击杀\r\n"
             + " - 购买补齐本任务所有可购买的普通/商店材料\r\n\r\n"
             + "本次一键结算共计消耗：\r\n"
             + " - 怪物同步金币：#r" + totalMobCost + "#k 金币\r\n"
@@ -353,21 +359,23 @@ function handleDetailSelection(selection) {
         return;
     }
 
-    // 单项同步指定怪物的账号历史击杀 -> 二次确认弹窗
+    // 单项购买指定怪物的账号历史击杀 -> 二次确认弹窗
     if (selection >= 150000 && selection < 200000) {
         var index = selection - 150000;
         var mob = currentDetail.getMobObjectives().get(index);
-        var diff = mob.getRequiredKills() - mob.getCurrentKills();
+        var buyCount = mob.getPurchasableKills();
 
         var confirmText = "#e#b【快速完成怪物击杀确认】#k#n\r\n\r\n"
             + "本次任务目标：\r\n"
-            + " - 击杀怪物：#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k x " + diff + " 只\r\n"
-            + " - 账号历史击杀：#b" + mob.getAccountKills() + "#k 只 (满足条件)\r\n\r\n"
+            + " - 目标怪物：#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k\r\n"
+            + " - 当前任务进度：#b" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + "#k 只\r\n"
+            + " - 账号历史总数：#b" + mob.getTotalAccountKills() + "#k 只\r\n"
+            + " - 本次购买注入：#b" + buyCount + "#k 只\r\n\r\n"
             + "本次快速结算将消耗：\r\n"
             + " - 击杀单价：#r" + mob.getUnitPrice() + "#k 金币\r\n"
-            + " - 所需金币：#r" + mob.getTotalCost() + "#k 金币\r\n"
+            + " - 所需金币：#r" + buyCount + "只 * " + mob.getUnitPrice() + "金币/只 = " + mob.getTotalCost() + " 金币#k\r\n"
             + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
-            + "#e是否确认支付金币并立即完成该击杀目标？#n";
+            + "#e是否确认支付金币购买并注入 " + buyCount + " 只击杀？#n";
 
         pendingConfirmAction = { type: 'MOB', id: mob.getMobId(), cost: mob.getTotalCost() };
         cm.sendYesNo(confirmText);
