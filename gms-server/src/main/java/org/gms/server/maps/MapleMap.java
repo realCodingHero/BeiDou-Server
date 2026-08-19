@@ -2422,6 +2422,7 @@ public class MapleMap {
         }
 
         chr.setMapId(mapid);
+        org.gms.server.quest.QuestHelpService.getInstance().recordMapVisited(chr.getId(), mapid);
         chr.updateActiveEffects();
 
         if (this.getHPDec() > 0) {

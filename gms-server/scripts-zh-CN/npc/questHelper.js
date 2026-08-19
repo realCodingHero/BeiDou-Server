@@ -346,7 +346,7 @@ function handleDetailSelection(selection) {
         var text = "#e#b怪物 【" + mob.getMobName() + "】 出现在以下地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
         }
         text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
@@ -395,7 +395,7 @@ function handleDetailSelection(selection) {
         var text = "#e#b接取 NPC 【" + startNpc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
         }
         text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
@@ -419,7 +419,7 @@ function handleDetailSelection(selection) {
         var text = "#e#b交付 NPC 【" + compNpc.getNpcName() + "】 所在地图：#k#n\r\n请选择目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
         }
         text += "\r\n#L999998##b[返回任务详情]#k#l";
         cm.sendSimple(text);
@@ -468,7 +468,7 @@ function handleSubSelection(selection) {
         var text = "#e#b怪物 【" + dropMob.getMobName() + "】 (掉落: " + selectedItem.getItemName() + ") 分布地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
         for (var i = 0; i < currentMapList.size(); i++) {
             var map = currentMapList.get(i);
-            text += "#L" + (500000 + i) + "# [地图] " + map.getDisplayName() + "#l\r\n";
+            text += "#L" + (500000 + i) + "# [地图] " + getMapDisplayWithLock(map) + "#l\r\n";
         }
         text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
         cm.sendSimple(text);
@@ -502,10 +502,32 @@ function handleMapWarp(selection) {
     cm.dispose();
 }
 
+function getMapDisplayWithLock(map) {
+    var service = cm.getQuestHelp();
+    var tag = "";
+    if (service && !service.isMapWarpUnlocked(cm.getPlayer(), map.getMapId())) {
+        var reason = service.getWarpLockReason(cm.getPlayer(), map.getMapId());
+        tag = " #r[" + (reason ? reason : "未解锁") + "]#k";
+    }
+    return map.getDisplayName() + tag;
+}
+
 /**
  * 统一传送扣费与金币校验方法
  */
 function tryWarpPlayer(targetMap, noticePrefix) {
+    var service = cm.getQuestHelp();
+    var mapId = targetMap.getMapId();
+    if (service && !service.isMapWarpUnlocked(cm.getPlayer(), mapId)) {
+        if (service.isHiddenMap(mapId) || service.getTownIdForMap(mapId) <= 0) {
+            cm.sendOk("目的地 【#b" + targetMap.getDisplayName() + "#k】 为隐藏/特殊区域，您尚未亲自探索过！\r\n必须先亲自找到并前往该地图一次后，方可使用直达传送。");
+        } else {
+            var townName = service.getTownNameForMap(mapId);
+            cm.sendOk("您尚未探索并访问过该区域的主城【#b" + townName + "#k】！\r\n请先亲自前往探索该主城后，方可解锁直达传送。");
+        }
+        return false;
+    }
+
     var cost = targetMap.getWarpCost();
     if (cost > 0 && cm.getPlayer().getMeso() < cost) {
         cm.sendOk("您的金币不足，无法进行传送！\r\n\r\n目的地：#b" + targetMap.getDisplayName() + "#k\r\n需要费用：#r" + cost + " 金币#k\r\n当前持有：#d" + cm.getPlayer().getMeso() + " 金币#k\r\n\r\n请准备好足够的金币后再来使用传送功能！");

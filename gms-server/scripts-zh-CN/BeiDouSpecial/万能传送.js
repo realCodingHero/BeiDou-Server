@@ -134,10 +134,45 @@ function level9999() {
     cm.openNpc(9900001);
 }
 
+function getMapWarpTag(mapId) {
+    var service = cm.getQuestHelp();
+    if (!service) {
+        return "";
+    }
+    if (service.isMapWarpUnlocked(cm.getPlayer(), mapId)) {
+        return "";
+    }
+    var reason = service.getWarpLockReason(cm.getPlayer(), mapId);
+    return " #r[" + (reason ? reason : "未解锁") + "]#k";
+}
+
+function checkAndWarp(mapId, cost) {
+    var service = cm.getQuestHelp();
+    if (service && !service.isMapWarpUnlocked(cm.getPlayer(), mapId)) {
+        var reason = service.getWarpLockReason(cm.getPlayer(), mapId);
+        if (service.isHiddenMap(mapId) || service.getTownIdForMap(mapId) <= 0) {
+            cm.sendOk("该地图为隐藏/特殊区域，您尚未亲自探索过！\r\n必须先亲自找到并前往该地图一次后，方可使用直达传送。");
+        } else {
+            var townName = service.getTownNameForMap(mapId);
+            cm.sendOk("您尚未探索并访问过该区域的主城【#b" + townName + "#k】！\r\n请先亲自前往探索该主城后，方可解锁直达传送。");
+        }
+        return false;
+    }
+    if (cm.getPlayer().getMeso() < cost) {
+        cm.sendOk("您的金币不足，无法进行传送！\r\n需要费用：" + cost + " 金币，当前持有：" + cm.getPlayer().getMeso() + " 金币。");
+        return false;
+    }
+    cm.gainMeso(-cost);
+    cm.getPlayer().saveLocationOnWarp();
+    cm.warp(mapId);
+    cm.dispose();
+    return true;
+}
+
 function level0() {
 	let text = "#b";
     for (let i = 0; i < bossmaps.length; i++) {  
-       text += "#L" + i + "#" + bossmaps[i][2] + "#l\r\n";
+       text += "#L" + i + "#" + bossmaps[i][2] + getMapWarpTag(bossmaps[i][0]) + "#l\r\n";
     }	
     text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("Boss", text);
@@ -146,7 +181,7 @@ function level0() {
 function level1() {
 	let text = "#b";
     for (let i = 0; i < monstermaps.length; i++) {  
-       text += "#L" + i + "#" + monstermaps[i][2] + "#l\r\n";
+       text += "#L" + i + "#" + monstermaps[i][2] + getMapWarpTag(monstermaps[i][0]) + "#l\r\n";
     }	
     text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("LevelUp", text);
@@ -155,7 +190,7 @@ function level1() {
 function level2() {
 	let text = "#b";
     for (let i = 0; i < townmaps.length; i++) {  
-       text += "#L" + i + "#" + townmaps[i][2] + "#l\r\n";
+       text += "#L" + i + "#" + townmaps[i][2] + getMapWarpTag(townmaps[i][0]) + "#l\r\n";
     }	
     text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("Town", text);
@@ -164,7 +199,7 @@ function level2() {
 function level3() {
 	let text = "#r注意：活动地图还有bug，请谨慎前往！#k\r\n#b";
     for (let i = 0; i < fubenmaps.length; i++) {  
-       text += "#L" + i + "#" + fubenmaps[i][2] + "#l\r\n";
+       text += "#L" + i + "#" + fubenmaps[i][2] + getMapWarpTag(fubenmaps[i][0]) + "#l\r\n";
     }	
     text += "\r\n#L9999##b[返回传送主菜单]#k#l\r\n";
 	cm.sendNextSelectLevel("Fuben", text);
@@ -176,10 +211,7 @@ function levelBoss(selection) {
         levelStart();
         return;
     }
-	cm.gainMeso(-bossmaps[selection][1]);
-	cm.getPlayer().saveLocationOnWarp();
-	cm.warp(bossmaps[selection][0]);
-	cm.dispose();
+    checkAndWarp(bossmaps[selection][0], bossmaps[selection][1]);
 }
 
 function levelLevelUp(selection) {
@@ -187,10 +219,7 @@ function levelLevelUp(selection) {
         levelStart();
         return;
     }
-	cm.gainMeso(-monstermaps[selection][1]);
-	cm.getPlayer().saveLocationOnWarp();
-	cm.warp(monstermaps[selection][0]);
-	cm.dispose();
+    checkAndWarp(monstermaps[selection][0], monstermaps[selection][1]);
 }
 
 function levelTown(selection) {
@@ -198,10 +227,7 @@ function levelTown(selection) {
         levelStart();
         return;
     }
-	cm.gainMeso(-townmaps[selection][1]);
-	cm.getPlayer().saveLocationOnWarp();
-	cm.warp(townmaps[selection][0]);
-	cm.dispose();
+    checkAndWarp(townmaps[selection][0], townmaps[selection][1]);
 }
 
 function levelFuben(selection) {
@@ -209,9 +235,6 @@ function levelFuben(selection) {
         levelStart();
         return;
     }
-	cm.gainMeso(-fubenmaps[selection][1]);
-	cm.getPlayer().saveLocationOnWarp();
-	cm.warp(fubenmaps[selection][0]);
-	cm.dispose();
+    checkAndWarp(fubenmaps[selection][0], fubenmaps[selection][1]);
 }
 //----------------------------------------------------------------------------------

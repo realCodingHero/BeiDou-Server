@@ -104,4 +104,46 @@ public class QuestWarpAndExpTest {
         killsCache.get(1001).put(999999, 0L);
         assertEquals(0L, service.getAccountMobKills(1001, 999999));
     }
+
+    @Test
+    public void testMapWarpUnlockRules() throws Exception {
+        QuestHelpService service = QuestHelpService.getInstance();
+
+        Field visitedField = QuestHelpService.class.getDeclaredField("characterVisitedMapsCache");
+        visitedField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Set<Integer>> visitedCache = (Map<Integer, Set<Integer>>) visitedField.get(service);
+
+        // 模拟角色 2001
+        Set<Integer> visited2001 = ConcurrentHashMap.newKeySet();
+        visitedCache.put(2001, visited2001);
+
+        // 1. 模拟常规地图: 100000200(训练场1, 所属主城 100000000 射手村)
+        int normalMapId = 100000200;
+        int townId = 100000000;
+
+        // 玩家未访问主城时，isMapVisited 应为 false
+        assertEquals(false, service.isMapVisited(2001, townId));
+        assertEquals(false, service.isMapVisited(2001, normalMapId));
+
+        // 玩家访问主城 100000000
+        visited2001.add(townId);
+        assertEquals(true, service.isMapVisited(2001, townId));
+
+        // 2. 模拟隐藏地图: 999999000(隐藏地图)
+        int hiddenMapId = 999999000;
+        Field hiddenCacheField = QuestHelpService.class.getDeclaredField("hiddenMapCache");
+        hiddenCacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Boolean> hiddenCache = (Map<Integer, Boolean>) hiddenCacheField.get(service);
+        hiddenCache.put(hiddenMapId, true);
+
+        assertEquals(true, service.isHiddenMap(hiddenMapId));
+        // 隐藏地图未访问自身时为 false
+        assertEquals(false, service.isMapVisited(2001, hiddenMapId));
+
+        // 玩家探索并访问隐藏地图自身
+        visited2001.add(hiddenMapId);
+        assertEquals(true, service.isMapVisited(2001, hiddenMapId));
+    }
 }
