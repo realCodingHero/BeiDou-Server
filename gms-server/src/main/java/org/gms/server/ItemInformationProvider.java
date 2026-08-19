@@ -1052,10 +1052,10 @@ public class ItemInformationProvider {
     */
     public boolean canUseCleanSlate(Equip equip) {
         Map<String, Integer> eqStats = getEquipStats(equip.getItemId());
-        if (eqStats == null || eqStats.get("tuc") == 0) {
+        if (eqStats == null || eqStats.getOrDefault("tuc", 0) == 0) {
             return false;
         }
-        int totalUpgradeCount = eqStats.get("tuc");
+        int totalUpgradeCount = eqStats.getOrDefault("tuc", 0);
         int freeUpgradeCount = equip.getUpgradeSlots();
         int viciousCount = equip.getVicious();
         int appliedScrollCount = equip.getLevel();
@@ -1744,7 +1744,7 @@ public class ItemInformationProvider {
         }
 
         Map<String, Integer> eqpStats = getEquipStats(itemId);
-        return eqpStats != null && eqpStats.get("cash") == 1;
+        return eqpStats != null && eqpStats.getOrDefault("cash", 0) == 1;
     }
 
     public boolean isUpgradeable(int itemId) {
@@ -1810,26 +1810,22 @@ public class ItemInformationProvider {
                     reqLevel = 0;
                 }
             }
-            /*
-             int reqJob = getEquipStats(equip.getItemId()).get("reqJob");
-             if (reqJob != 0) {
-             Really hard check, and not really needed in this one
-             Gm's should just be GM job, and players cannot change jobs.
-             }*/
             if (reqLevel > chr.getLevel()) {
                 continue;
-            } else if (getEquipStats(equip.getItemId()).get("reqDEX") > tdex) {
-                continue;
-            } else if (getEquipStats(equip.getItemId()).get("reqSTR") > tstr) {
-                continue;
-            } else if (getEquipStats(equip.getItemId()).get("reqLUK") > tluk) {
-                continue;
-            } else if (getEquipStats(equip.getItemId()).get("reqINT") > tint) {
-                continue;
             }
-            int reqPOP = getEquipStats(equip.getItemId()).get("reqPOP");
-            if (reqPOP > 0) {
-                if (getEquipStats(equip.getItemId()).get("reqPOP") > fame) {
+            Map<String, Integer> stats = getEquipStats(equip.getItemId());
+            if (stats != null) {
+                if (stats.getOrDefault("reqDEX", 0) > tdex) {
+                    continue;
+                } else if (stats.getOrDefault("reqSTR", 0) > tstr) {
+                    continue;
+                } else if (stats.getOrDefault("reqLUK", 0) > tluk) {
+                    continue;
+                } else if (stats.getOrDefault("reqINT", 0) > tint) {
+                    continue;
+                }
+                int reqPOP = stats.getOrDefault("reqPOP", 0);
+                if (reqPOP > 0 && reqPOP > fame) {
                     continue;
                 }
             }
@@ -1883,21 +1879,22 @@ public class ItemInformationProvider {
             reqLevel -= 5;
         }
         int i = 0; //lol xD
-        //Removed job check. Shouldn't really be needed.
         if (reqLevel > chr.getLevel()) {
             i++;
-        } else if (getEquipStats(equip.getItemId()).get("reqDEX") > chr.getTotalDex()) {
-            i++;
-        } else if (getEquipStats(equip.getItemId()).get("reqSTR") > chr.getTotalStr()) {
-            i++;
-        } else if (getEquipStats(equip.getItemId()).get("reqLUK") > chr.getTotalLuk()) {
-            i++;
-        } else if (getEquipStats(equip.getItemId()).get("reqINT") > chr.getTotalInt()) {
-            i++;
         }
-        int reqPOP = getEquipStats(equip.getItemId()).get("reqPOP");
-        if (reqPOP > 0) {
-            if (getEquipStats(equip.getItemId()).get("reqPOP") > chr.getFame()) {
+        Map<String, Integer> stats = getEquipStats(equip.getItemId());
+        if (stats != null) {
+            if (stats.getOrDefault("reqDEX", 0) > chr.getTotalDex()) {
+                i++;
+            } else if (stats.getOrDefault("reqSTR", 0) > chr.getTotalStr()) {
+                i++;
+            } else if (stats.getOrDefault("reqLUK", 0) > chr.getTotalLuk()) {
+                i++;
+            } else if (stats.getOrDefault("reqINT", 0) > chr.getTotalInt()) {
+                i++;
+            }
+            int reqPOP = stats.getOrDefault("reqPOP", 0);
+            if (reqPOP > 0 && reqPOP > chr.getFame()) {
                 i++;
             }
         }
