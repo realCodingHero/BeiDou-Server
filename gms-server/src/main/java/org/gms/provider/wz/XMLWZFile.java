@@ -64,7 +64,7 @@ public class XMLWZFile implements DataProvider {
     }
 
     @Override
-    public synchronized Data getData(String path) {
+    public Data getData(String path) {
         Path dataFile = root.resolve(path + ".xml");
         Path imageDataDir = root.resolve(path);
         if (!Files.exists(dataFile)) {

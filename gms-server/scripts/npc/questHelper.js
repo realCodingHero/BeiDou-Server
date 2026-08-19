@@ -69,9 +69,17 @@ function showMainMenu() {
         return;
     }
 
-    var completable = service.getCompletableQuestSummaries(cm.getPlayer());
-    var inProgress = service.getInProgressQuestSummaries(cm.getPlayer());
-    var total = completable.size() + inProgress.size();
+    var allQuests = service.getStartedQuestSummaries(cm.getPlayer());
+    var completableCount = 0;
+    var inProgressCount = 0;
+    for (var i = 0; i < allQuests.size(); i++) {
+        if (allQuests.get(i).isCanComplete()) {
+            completableCount++;
+        } else {
+            inProgressCount++;
+        }
+    }
+    var total = allQuests.size();
 
     if (total === 0) {
         cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990##b[返回昨日小睡主菜单]#k#l");
@@ -80,8 +88,8 @@ function showMainMenu() {
 
     var text = "\t\t\t\t#e#b【 任务辅助 - 任务分类 】#k#n\r\n\r\n";
     text += "请选择您要查看的任务分类：\r\n\r\n";
-    text += "#L1##e#b【 可交付任务 】#k#n (共 #d" + completable.size() + "#k 个任务已达成全部条件)#l\r\n";
-    text += "#L2##e#d【 进行中任务 】#k#n (共 #d" + inProgress.size() + "#k 个任务尚未达成目标)#l\r\n\r\n";
+    text += "#L1##e#b【 可交付任务 】#k#n (共 #d" + completableCount + "#k 个任务已达成全部条件)#l\r\n";
+    text += "#L2##e#d【 进行中任务 】#k#n (共 #d" + inProgressCount + "#k 个任务尚未达成目标)#l\r\n\r\n";
     text += "#L999990##b[返回昨日小睡主菜单]#k#l";
 
     cm.sendSimple(text);
@@ -116,13 +124,20 @@ function showQuestList() {
         return;
     }
 
-    var quests = (selectedCategory === 1) ?
-            service.getCompletableQuestSummaries(cm.getPlayer()) :
-            service.getInProgressQuestSummaries(cm.getPlayer());
+    var allQuests = service.getStartedQuestSummaries(cm.getPlayer());
+    var quests = [];
+    for (var i = 0; i < allQuests.size(); i++) {
+        var item = allQuests.get(i);
+        if (selectedCategory === 1 && item.isCanComplete()) {
+            quests.push(item);
+        } else if (selectedCategory === 2 && !item.isCanComplete()) {
+            quests.push(item);
+        }
+    }
 
     var categoryTitle = (selectedCategory === 1) ? "可交付任务列表" : "进行中任务列表";
 
-    if (!quests || quests.size() === 0) {
+    if (!quests || quests.length === 0) {
         var emptyMsg = (selectedCategory === 1) ?
                 "当前没有已达成全部条件的可交付任务。\r\n请在【进行中任务】中查看当前目标并完成！" :
                 "当前没有未完成的进行中任务！";
@@ -133,8 +148,8 @@ function showQuestList() {
     var text = "\t\t\t\t#e#b【 任务辅助 - " + categoryTitle + " 】#k#n\r\n\r\n";
     text += "请选择您想要查看、补齐材料或快速传送的目标任务：\r\n\r\n";
 
-    for (var i = 0; i < quests.size(); i++) {
-        var q = quests.get(i);
+    for (var i = 0; i < quests.length; i++) {
+        var q = quests[i];
         var tag = "";
         if (q.isCanComplete()) {
             tag = " #b[可交付]#k";

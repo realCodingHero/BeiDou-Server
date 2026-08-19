@@ -163,7 +163,9 @@ public final class QuestHelpService {
         try {
             DataProvider mapSource = DataProviderFactory.getDataProvider(WZFiles.MAP);
             if (mapSource != null && mapSource.getRoot() != null) {
-                scanDir(mapSource, mapSource.getRoot());
+                List<DataFileEntry> mapFiles = new ArrayList<>();
+                collectMapFiles(mapSource.getRoot(), mapFiles);
+                mapFiles.parallelStream().forEach(fileEntry -> scanFile(mapSource, fileEntry));
             }
         } catch (Exception e) {
             log.error("Error scanning Map.wz for life index", e);
@@ -247,14 +249,18 @@ public final class QuestHelpService {
                 System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size());
     }
 
-    private void scanDir(DataProvider mapSource, DataEntity entity) {
+    private void collectMapFiles(DataEntity entity, List<DataFileEntry> files) {
         if (entity instanceof DataDirectoryEntry dir) {
-            dir.getFiles().parallelStream().forEach(fileEntry -> scanFile(mapSource, fileEntry));
-            dir.getSubdirectories().parallelStream().forEach(subDir -> {
-                if (subDir.getName().startsWith("Map") || subDir.getName().startsWith("map")) {
-                    scanDir(mapSource, subDir);
+            for (DataFileEntry file : dir.getFiles()) {
+                if (file.getName().endsWith(".img")) {
+                    files.add(file);
                 }
-            });
+            }
+            for (DataDirectoryEntry subDir : dir.getSubdirectories()) {
+                if (subDir.getName().startsWith("Map") || subDir.getName().startsWith("map")) {
+                    collectMapFiles(subDir, files);
+                }
+            }
         }
     }
 
