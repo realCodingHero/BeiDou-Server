@@ -1,4 +1,5 @@
-version: '3.4'
+name: beidou-nas
+
 services:
   beidou-server-all:
     container_name: beidou-server-all
