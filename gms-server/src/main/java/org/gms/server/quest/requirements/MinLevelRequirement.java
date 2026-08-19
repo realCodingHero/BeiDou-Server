@@ -50,4 +50,8 @@ public class MinLevelRequirement extends AbstractQuestRequirement {
     public boolean check(Character chr, Integer npcid) {
         return chr.getLevel() >= minLevel;
     }
+
+    public int getMinLevel() {
+        return minLevel;
+    }
 }
