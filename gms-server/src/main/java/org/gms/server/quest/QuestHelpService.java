@@ -975,10 +975,11 @@ public final class QuestHelpService {
             if (name == null || name.isBlank()) {
                 name = "任务 " + q.getId();
             }
+            int minLevel = q.getMinLevel();
             boolean canComplete = isQuestCompletable(player, q);
             boolean purchasableComplete = isQuestPurchasableCompletable(player, q);
             long lastModifiedTime = qs.getLastModifiedTime();
-            list.add(new QuestSummary(q.getId(), name, canComplete, purchasableComplete, lastModifiedTime));
+            list.add(new QuestSummary(q.getId(), name, minLevel, canComplete, purchasableComplete, lastModifiedTime));
         }
         list.sort((a, b) -> {
             int cmp = Long.compare(b.getLastModifiedTime(), a.getLastModifiedTime());
@@ -998,6 +999,10 @@ public final class QuestHelpService {
         return Collections.unmodifiableList(list);
     }
 
+    public List<QuestSummary> getCanCompleteQuests(Character player) {
+        return getCompletableQuestSummaries(player);
+    }
+
     public List<QuestSummary> getInProgressQuestSummaries(Character player) {
         List<QuestSummary> list = new ArrayList<>();
         for (QuestSummary s : getStartedQuestSummaries(player)) {
@@ -1008,7 +1013,26 @@ public final class QuestHelpService {
         return Collections.unmodifiableList(list);
     }
 
+    public List<QuestSummary> getInProgressQuests(Character player) {
+        return getInProgressQuestSummaries(player);
+    }
+
     public QuestDetailInfo getQuestDetail(Character player, int questId) {
+        if (player == null) {
+            return null;
+        }
+        QuestStatus qs = player.getQuest(Quest.getInstance(questId));
+        if (qs == null) {
+            return null;
+        }
+        Quest q = qs.getQuest();
+        if (q == null) {
+            return null;
+        }
+        return getQuestDetailInfo(player, questId);
+    }
+
+    public QuestDetailInfo getQuestDetailInfo(Character player, int questId) {
         if (player == null) {
             return null;
         }
@@ -1536,13 +1560,15 @@ public final class QuestHelpService {
     public static class QuestSummary {
         private final int questId;
         private final String questName;
+        private final int minLevel;
         private final boolean canComplete;
         private final boolean purchasableComplete;
         private final long lastModifiedTime;
 
-        public QuestSummary(int questId, String questName, boolean canComplete, boolean purchasableComplete, long lastModifiedTime) {
+        public QuestSummary(int questId, String questName, int minLevel, boolean canComplete, boolean purchasableComplete, long lastModifiedTime) {
             this.questId = questId;
             this.questName = questName;
+            this.minLevel = minLevel;
             this.canComplete = canComplete;
             this.purchasableComplete = purchasableComplete;
             this.lastModifiedTime = lastModifiedTime;
@@ -1554,6 +1580,10 @@ public final class QuestHelpService {
 
         public String getQuestName() {
             return questName;
+        }
+
+        public int getMinLevel() {
+            return minLevel;
         }
 
         public boolean isCanComplete() {

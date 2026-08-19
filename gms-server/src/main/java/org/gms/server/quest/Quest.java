@@ -469,6 +469,14 @@ public class Quest {
         return Collections.emptyMap();
     }
 
+    public int getMinLevel() {
+        AbstractQuestRequirement req = startReqs.get(QuestRequirementType.MIN_LEVEL);
+        if (req instanceof MinLevelRequirement mlr) {
+            return mlr.getMinLevel();
+        }
+        return 0;
+    }
+
     public Map<Integer, Integer> getRequiredItems() {
         AbstractQuestRequirement req = completeReqs.get(QuestRequirementType.ITEM);
         if (req instanceof ItemRequirement itemReq) {
