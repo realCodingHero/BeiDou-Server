@@ -146,4 +146,29 @@ public class QuestWarpAndExpTest {
         visited2001.add(hiddenMapId);
         assertEquals(true, service.isMapVisited(2001, hiddenMapId));
     }
+
+    @Test
+    public void testMobKillUnitPriceByLevel() {
+        QuestHelpService service = QuestHelpService.getInstance();
+
+        // 1. 验证各等级段细致阶梯单价
+        assertEquals(50, service.getMobKillUnitPriceByLevel(5));    // Lv 1~10
+        assertEquals(100, service.getMobKillUnitPriceByLevel(15));  // Lv 11~20
+        assertEquals(250, service.getMobKillUnitPriceByLevel(25));  // Lv 21~30
+        assertEquals(600, service.getMobKillUnitPriceByLevel(35));  // Lv 31~40
+        assertEquals(1200, service.getMobKillUnitPriceByLevel(45)); // Lv 41~50
+        assertEquals(2500, service.getMobKillUnitPriceByLevel(55)); // Lv 51~60
+        assertEquals(4500, service.getMobKillUnitPriceByLevel(65)); // Lv 61~70
+        assertEquals(7500, service.getMobKillUnitPriceByLevel(75)); // Lv 71~80
+        assertEquals(12000, service.getMobKillUnitPriceByLevel(85));// Lv 81~90
+        assertEquals(18000, service.getMobKillUnitPriceByLevel(95));// Lv 91~100
+        assertEquals(26000, service.getMobKillUnitPriceByLevel(105));// Lv 101~110
+        assertEquals(36000, service.getMobKillUnitPriceByLevel(115));// Lv 111~120
+        assertEquals(48000, service.getMobKillUnitPriceByLevel(125));// Lv 121~130
+        assertEquals(65000, service.getMobKillUnitPriceByLevel(140));// Lv 131+
+
+        // 2. 验证 71级 vs 100级 100只任务总价对比 (75万 vs 180万)
+        assertEquals(750000L, 7500L * 100);
+        assertEquals(1800000L, 18000L * 100);
+    }
 }

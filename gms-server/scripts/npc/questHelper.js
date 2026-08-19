@@ -11,6 +11,7 @@ var currentDetail = null;
 var selectedItem = null;
 var currentMapList = null;
 var pendingNotice = null;
+var pendingConfirmAction = null; // { type: 'ALL' | 'MOB' | 'ITEM', id: number, cost: number }
 
 function start() {
     status = -1;
@@ -20,6 +21,7 @@ function start() {
     selectedItem = null;
     currentMapList = null;
     pendingNotice = null;
+    pendingConfirmAction = null;
     action(1, 0, 0);
 }
 
@@ -29,6 +31,13 @@ function action(mode, type, selection) {
             cm.dispose();
             return;
         } else if (mode === 0) {
+            if (pendingConfirmAction != null) {
+                // 二次确认中选择了 "否"
+                pendingConfirmAction = null;
+                status = 1;
+                action(1, 0, selectedQuestId);
+                return;
+            }
             if (status <= 0) {
                 cm.dispose();
                 return;
@@ -36,6 +45,27 @@ function action(mode, type, selection) {
             status--;
         } else {
             status++;
+        }
+
+        // 处理二次确认中点击了 "是" (mode === 1)
+        if (pendingConfirmAction != null) {
+            var confirmAction = pendingConfirmAction;
+            pendingConfirmAction = null;
+            var service = cm.getQuestHelp();
+            var res = null;
+            if (confirmAction.type === 'ALL') {
+                res = service.deliverAllQuestObjectives(cm.getPlayer(), selectedQuestId);
+            } else if (confirmAction.type === 'MOB') {
+                res = service.syncQuestMobKill(cm.getPlayer(), selectedQuestId, confirmAction.id);
+            } else if (confirmAction.type === 'ITEM') {
+                res = service.deliverQuestMaterial(cm.getPlayer(), selectedQuestId, confirmAction.id);
+            }
+            if (res != null) {
+                pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
+            }
+            status = 1;
+            action(1, 0, selectedQuestId);
+            return;
         }
 
         if (status === 0) {
@@ -69,89 +99,72 @@ function showMainMenu() {
         return;
     }
 
-    var completable = service.getCompletableQuestSummaries(cm.getPlayer());
-    var inProgress = service.getInProgressQuestSummaries(cm.getPlayer());
-    var total = completable.size() + inProgress.size();
+    var canCompleteQuests = service.getCanCompleteQuests(cm.getPlayer());
+    var inProgressQuests = service.getInProgressQuests(cm.getPlayer());
 
-    if (total === 0) {
-        cm.sendSimple("您当前没有任何正在进行中的任务。\r\n请在游戏中接取任务后再来使用任务辅助功能！\r\n\r\n#L999990##b[返回昨日小睡主菜单]#k#l");
-        return;
+    var text = "\t\t\t\t#e#r★ BeiDou 任务辅助助手 ★#k#n\r\n\r\n";
+    text += "在这里您可以查看当前所有已接取的任务进度、一键导航至起止 NPC、快捷传送至怪物地图，以及一键补齐普通任务材料。\r\n\r\n";
+
+    if (canCompleteQuests.size() > 0) {
+        text += "#L1##b★ 查看当前可直接交付的任务#k #r(" + canCompleteQuests.size() + " 个已达成)#k#l\r\n";
+    } else {
+        text += "#L1##d★ 查看当前可交付的任务 (暂无可交付任务)#k#l\r\n";
     }
 
-    var text = "\t\t\t\t#e#b【 任务辅助 - 任务分类 】#k#n\r\n\r\n";
-    text += "请选择您要查看的任务分类：\r\n\r\n";
-    text += "#L1##e#b【 可交付任务 】#k#n (共 #d" + completable.size() + "#k 个任务已达成全部条件)#l\r\n";
-    text += "#L2##e#d【 进行中任务 】#k#n (共 #d" + inProgress.size() + "#k 个任务尚未达成目标)#l\r\n\r\n";
-    text += "#L999990##b[返回昨日小睡主菜单]#k#l";
+    text += "#L2##b★ 查看当前进行中的任务列表#k #d(" + inProgressQuests.size() + " 个进行中)#k#l\r\n\r\n";
+    text += "#L999999##b[返回昨日小睡主菜单]#k#l";
 
     cm.sendSimple(text);
 }
 
 /**
- * 步骤 1：处理主菜单点击，展示对应分类下的任务列表
+ * 步骤 1：处理主菜单选择
  */
 function handleMainMenuSelection(selection) {
-    if (selection === 999990) {
+    if (selection === 999999) {
         cm.dispose();
         cm.openNpc(9900001);
         return;
     }
 
-    if (selection === 1 || selection === 2) {
-        selectedCategory = selection;
-        showQuestList();
-        return;
-    }
-
-    cm.dispose();
+    selectedCategory = selection;
+    showQuestList(selectedCategory);
 }
 
 /**
- * 展示指定分类下的任务列表
+ * 展示任务列表（分类 1: 可交付, 分类 2: 进行中）
  */
-function showQuestList() {
+function showQuestList(category) {
     var service = cm.getQuestHelp();
-    if (!service) {
-        cm.sendOk("任务辅助服务暂不可用。");
+    var list = (category === 1) ? service.getCanCompleteQuests(cm.getPlayer()) : service.getInProgressQuests(cm.getPlayer());
+
+    var categoryTitle = (category === 1) ? "可直接交付的任务" : "进行中的任务";
+    var text = "#e#b【 " + categoryTitle + " 】 (共 " + list.size() + " 个)#k#n\r\n\r\n";
+
+    if (list.size() === 0) {
+        text += (category === 1) ? "当前没有任何已达成全部条件的任务。\r\n" : "您当前尚未接取任何任务。\r\n";
+        text += "\r\n#L999999##b[返回上一层]#k#l";
+        cm.sendSimple(text);
         return;
     }
 
-    var quests = (selectedCategory === 1) ?
-            service.getCompletableQuestSummaries(cm.getPlayer()) :
-            service.getInProgressQuestSummaries(cm.getPlayer());
-
-    var categoryTitle = (selectedCategory === 1) ? "可交付任务列表" : "进行中任务列表";
-
-    if (!quests || quests.size() === 0) {
-        var emptyMsg = (selectedCategory === 1) ?
-                "当前没有已达成全部条件的可交付任务。\r\n请在【进行中任务】中查看当前目标并完成！" :
-                "当前没有未完成的进行中任务！";
-        cm.sendSimple(emptyMsg + "\r\n\r\n#L999999##b[返回分类菜单]#k#l");
-        return;
-    }
-
-    var text = "\t\t\t\t#e#b【 任务辅助 - " + categoryTitle + " 】#k#n\r\n\r\n";
-    text += "请选择您想要查看、补齐材料或快速传送的目标任务：\r\n\r\n";
-
-    for (var i = 0; i < quests.size(); i++) {
-        var q = quests.get(i);
+    for (var i = 0; i < list.size(); i++) {
+        var item = list.get(i);
         var tag = "";
-        if (q.isCanComplete()) {
-            tag = " #b[可交付]#k";
-        } else if (q.isPurchasableComplete()) {
-            tag = " #d[可购买交付]#k";
-        } else {
-            tag = " #d[进行中]#k";
+        if (item.isCanComplete()) {
+            tag = " #r[可交付]#k";
+        } else if (item.isPurchasableComplete()) {
+            tag = " #g[可一键补齐]#k";
         }
-        text += "#L" + q.getQuestId() + "# [任务 " + q.getQuestId() + "] #b" + q.getQuestName() + "#k" + tag + "#l\r\n";
+        text += "#L" + item.getQuestId() + "# [Lv." + item.getMinLevel() + "] #b" + item.getQuestName() + "#k" + tag + "#l\r\n";
     }
 
-    text += "\r\n#L999999##b[返回分类菜单]#k#l";
+    text += "\r\n#L999999##b[返回上一层]#k#l";
     cm.sendSimple(text);
 }
 
 /**
- * 步骤 2：处理从任务列表的选择
+ * 步骤 2：处理从任务列表点击某个任务
  */
 function handleQuestListSelection(selection) {
     if (selection === 999999) {
@@ -165,38 +178,26 @@ function handleQuestListSelection(selection) {
 }
 
 /**
- * 展示选中任务的具体目标（杀怪、物品、NPC）与快捷补齐/传送选项
+ * 展示指定任务的详细进度与各项操作
  */
 function showQuestDetail(questId) {
     var service = cm.getQuestHelp();
-    if (!service) {
-        cm.sendOk("任务辅助服务暂不可用。");
-        return;
-    }
+    currentDetail = service.getQuestDetailInfo(cm.getPlayer(), questId);
 
-    currentDetail = service.getQuestDetail(cm.getPlayer(), questId);
     if (!currentDetail) {
-        cm.sendOk("获取任务目标详情失败，该任务可能已完成或放弃。");
+        cm.sendOk("未获取到任务详细信息，可能任务已被放弃或已完成。");
+        status = 0;
         return;
     }
 
-    var text = "";
+    var text = "#e#b【 任务详情 】 " + currentDetail.getQuestName() + " (ID: " + questId + ")#k#n\r\n";
+
     if (pendingNotice) {
-        text += pendingNotice + "\r\n\r\n--------------------------------\r\n\r\n";
+        text += "\r\n" + pendingNotice + "\r\n\r\n";
         pendingNotice = null;
-    }
-
-    var statusHeader = "";
-    if (currentDetail.isCanComplete()) {
-        statusHeader = "#e#b【状态：已集齐全部条件，可直接前往交付！】#k#n";
-    } else if (currentDetail.isPurchasableComplete()) {
-        statusHeader = "#e#d【状态：所有缺失材料均可购买补齐，补齐后即可交付！】#k#n";
     } else {
-        statusHeader = "#e#d【状态：进行中，需达成以下目标】#k#n";
+        text += "\r\n";
     }
-
-    text += "#e#b【任务】" + currentDetail.getQuestName() + " (ID: " + currentDetail.getQuestId() + ")#k#n\r\n";
-    text += statusHeader + "\r\n\r\n";
 
     var mobObjs = currentDetail.getMobObjectives();
     var itemObjs = currentDetail.getItemObjectives();
@@ -206,14 +207,16 @@ function showQuestDetail(questId) {
     // 检查是否有可同步的怪物击杀与可补齐的普通材料
     var hasSyncableMobs = currentDetail.hasSyncableMobKills();
     var hasDeliverableIncomplete = currentDetail.hasDeliverableIncompleteItems();
-    var totalCost = currentDetail.getTotalRegularMaterialsCost();
+    var totalMobCost = currentDetail.getTotalSyncableMobsCost();
+    var totalMatCost = currentDetail.getTotalRegularMaterialsCost();
+    var combinedCost = currentDetail.getTotalCostWithMobsAndMaterials();
 
     if (hasSyncableMobs && hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(材料共需: " + totalCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(共需: " + combinedCost + " 金币 [怪物: " + totalMobCost + " | 材料: " + totalMatCost + "])#k#l\r\n\r\n";
     } else if (hasSyncableMobs) {
-        text += "#L10000##k【 #d★ 一键同步本任务全部满足条件的账号怪物击杀#k 】#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键同步本任务全部满足条件的账号怪物击杀#k 】 #d(共需: " + totalMobCost + " 金币)#k#l\r\n\r\n";
     } else if (hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(共需: " + totalCost + " 金币)#k#l\r\n\r\n";
+        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(共需: " + totalMatCost + " 金币)#k#l\r\n\r\n";
     }
 
     var hasContent = false;
@@ -226,14 +229,14 @@ function showQuestDetail(questId) {
             var mob = mobObjs.get(i);
             var statusTag = mob.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
             if (mob.isBoss()) {
-                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #d[Boss怪物，需亲自击杀]#k\r\n";
+                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #r[Boss怪物，需亲自击杀]#k\r\n";
             } else if (mob.isCompleted()) {
-                text += " 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + "\r\n";
+                text += " 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + "\r\n";
             } else if (mob.isSyncable()) {
-                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
-                text += "#L" + (150000 + i) + "#   #d└─ [账号历史累计击杀: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " -> 点击一键同步达成]#k#l\r\n";
+                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
+                text += "#L" + (150000 + i) + "#   #d└─ [账号击杀: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " | 单价: " + mob.getUnitPrice() + " 金币 | 需: " + mob.getTotalCost() + " 金币 -> 点击确认完成]#k#l\r\n";
             } else {
-                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k #d(账号累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + ")#k#l\r\n";
+                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k #d(账号累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + ")#k#l\r\n";
             }
         }
         text += "\r\n";
@@ -294,37 +297,66 @@ function handleDetailSelection(selection) {
         return;
     }
 
-    // 一键同步账号击杀并购买全部普通材料
+    // 一键同步账号击杀并购买全部普通材料 -> 二次确认弹窗
     if (selection === 10000) {
-        var service = cm.getQuestHelp();
-        var res = service.deliverAllQuestObjectives(cm.getPlayer(), selectedQuestId);
-        pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
-        status = 1;
-        action(1, 0, selectedQuestId);
+        var totalMobCost = currentDetail.getTotalSyncableMobsCost();
+        var totalMatCost = currentDetail.getTotalRegularMaterialsCost();
+        var combinedCost = currentDetail.getTotalCostWithMobsAndMaterials();
+
+        var confirmText = "#e#b【一键完成任务目标确认】#k#n\r\n\r\n"
+            + "本次一键操作将包含：\r\n"
+            + " - 同步本任务所有满足条件的账号历史怪物击杀\r\n"
+            + " - 购买补齐本任务所有可购买的普通/商店材料\r\n\r\n"
+            + "本次一键结算共计消耗：\r\n"
+            + " - 怪物同步金币：#r" + totalMobCost + "#k 金币\r\n"
+            + " - 材料购买金币：#r" + totalMatCost + "#k 金币\r\n"
+            + " - 合计所需金币：#r" + combinedCost + "#k 金币\r\n"
+            + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
+            + "#e是否确认支付金币并立即一键完成？#n";
+
+        pendingConfirmAction = { type: 'ALL', id: 0, cost: combinedCost };
+        cm.sendYesNo(confirmText);
         return;
     }
 
-    // 单项同步指定怪物的账号历史击杀
+    // 单项同步指定怪物的账号历史击杀 -> 二次确认弹窗
     if (selection >= 150000 && selection < 200000) {
         var index = selection - 150000;
         var mob = currentDetail.getMobObjectives().get(index);
-        var service = cm.getQuestHelp();
-        var res = service.syncQuestMobKill(cm.getPlayer(), selectedQuestId, mob.getMobId());
-        pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
-        status = 1;
-        action(1, 0, selectedQuestId);
+        var diff = mob.getRequiredKills() - mob.getCurrentKills();
+
+        var confirmText = "#e#b【快速完成怪物击杀确认】#k#n\r\n\r\n"
+            + "本次任务目标：\r\n"
+            + " - 击杀怪物：#r" + mob.getMobName() + " (Lv." + mob.getMobLevel() + ")#k x " + diff + " 只\r\n"
+            + " - 账号历史击杀：#g" + mob.getAccountKills() + "#k 只 (满足条件)\r\n\r\n"
+            + "本次快速结算将消耗：\r\n"
+            + " - 击杀单价：#r" + mob.getUnitPrice() + "#k 金币\r\n"
+            + " - 所需金币：#r" + mob.getTotalCost() + "#k 金币\r\n"
+            + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
+            + "#e是否确认支付金币并立即完成该击杀目标？#n";
+
+        pendingConfirmAction = { type: 'MOB', id: mob.getMobId(), cost: mob.getTotalCost() };
+        cm.sendYesNo(confirmText);
         return;
     }
 
-    // 单项补齐指定普通材料/商店道具
+    // 单项补齐指定普通材料/商店道具 -> 二次确认弹窗
     if (selection >= 250000 && selection < 300000) {
         var index = selection - 250000;
         var item = currentDetail.getItemObjectives().get(index);
-        var service = cm.getQuestHelp();
-        var res = service.deliverQuestMaterial(cm.getPlayer(), selectedQuestId, item.getItemId());
-        pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
-        status = 1;
-        action(1, 0, selectedQuestId);
+        var diff = item.getRequiredCount() - item.getCurrentCount();
+
+        var confirmText = "#e#b【购买补齐材料确认】#k#n\r\n\r\n"
+            + "本次任务目标：\r\n"
+            + " - 收集道具：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 x " + diff + " 个\r\n\r\n"
+            + "本次购买补齐将消耗：\r\n"
+            + " - 道具单价：#r" + item.getUnitPrice() + "#k 金币\r\n"
+            + " - 所需金币：#r" + item.getTotalPrice() + "#k 金币\r\n"
+            + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
+            + "#e是否确认支付金币并购买补齐？#n";
+
+        pendingConfirmAction = { type: 'ITEM', id: item.getItemId(), cost: item.getTotalPrice() };
+        cm.sendYesNo(confirmText);
         return;
     }
 
@@ -368,7 +400,7 @@ function handleDetailSelection(selection) {
         for (var i = 0; i < dropMobs.size(); i++) {
             var dropMob = dropMobs.get(i);
             if (dropMob.isBoss()) {
-                text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #d[Boss怪物，已关闭直达传送]#k\r\n";
+                text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #r[Boss怪物，已关闭直达传送]#k\r\n";
             } else {
                 text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
             }
@@ -507,7 +539,7 @@ function getMapDisplayWithLock(map) {
     var tag = "";
     if (service && !service.isMapWarpUnlocked(cm.getPlayer(), map.getMapId())) {
         var reason = service.getWarpLockReason(cm.getPlayer(), map.getMapId());
-        tag = " #r[" + (reason ? reason : "未解锁") + "]#k";
+        tag = " #r[" + (reason ? reason : "需先访问主城") + "]#k";
     }
     return map.getDisplayName() + tag;
 }
