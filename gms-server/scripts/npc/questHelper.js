@@ -203,21 +203,17 @@ function showQuestDetail(questId) {
     var startNpc = currentDetail.getStartNpc();
     var compNpc = currentDetail.getCompleteNpc();
 
-    // 检查是否有可补齐的普通材料
-    var hasDeliverableIncomplete = false;
+    // 检查是否有可同步的怪物击杀与可补齐的普通材料
+    var hasSyncableMobs = currentDetail.hasSyncableMobKills();
+    var hasDeliverableIncomplete = currentDetail.hasDeliverableIncompleteItems();
     var totalCost = currentDetail.getTotalRegularMaterialsCost();
-    if (itemObjs && itemObjs.size() > 0) {
-        for (var i = 0; i < itemObjs.size(); i++) {
-            var item = itemObjs.get(i);
-            if (item.isDeliverable() && !item.isCompleted()) {
-                hasDeliverableIncomplete = true;
-                break;
-            }
-        }
-    }
 
-    if (hasDeliverableIncomplete) {
-        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通怪物材料#k 】 #d(共需: " + totalCost + " 金币)#k#l\r\n\r\n";
+    if (hasSyncableMobs && hasDeliverableIncomplete) {
+        text += "#L10000##k【 #d★ 一键同步账号击杀并购买全部普通材料#k 】 #d(材料共需: " + totalCost + " 金币)#k#l\r\n\r\n";
+    } else if (hasSyncableMobs) {
+        text += "#L10000##k【 #d★ 一键同步本任务全部满足条件的账号怪物击杀#k 】#l\r\n\r\n";
+    } else if (hasDeliverableIncomplete) {
+        text += "#L10000##k【 #d★ 一键购买补齐本任务全部普通/商店材料#k 】 #d(共需: " + totalCost + " 金币)#k#l\r\n\r\n";
     }
 
     var hasContent = false;
@@ -230,9 +226,14 @@ function showQuestDetail(questId) {
             var mob = mobObjs.get(i);
             var statusTag = mob.isCompleted() ? " #b[已达成]#k" : " #r[未完成]#k";
             if (mob.isBoss()) {
-                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #d[Boss怪物，已关闭直达传送]#k\r\n";
-            } else {
+                text += " 击杀 【#rBoss - " + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " #d[Boss怪物，需亲自击杀]#k\r\n";
+            } else if (mob.isCompleted()) {
+                text += " 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + "\r\n";
+            } else if (mob.isSyncable()) {
                 text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k#l\r\n";
+                text += "#L" + (150000 + i) + "#   #d└─ [账号历史累计击杀: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + " -> 点击一键同步达成]#k#l\r\n";
+            } else {
+                text += "#L" + (100000 + i) + "# 击杀 【#b" + mob.getMobName() + "#k】 (" + mob.getCurrentKills() + "/" + mob.getRequiredKills() + ")" + statusTag + " -> #d[查看地图/传送]#k #d(账号累计: " + mob.getAccountKills() + "/" + mob.getRequiredKills() + ")#k#l\r\n";
             }
         }
         text += "\r\n";
@@ -250,8 +251,9 @@ function showQuestDetail(questId) {
             if (item.isCompleted()) {
                 text += " 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + "\r\n";
             } else if (item.isDeliverable()) {
+                var originType = item.isNativeShopItem() ? "原生商店/材料" : "怪物材料";
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[掉落怪物/传送]#k#l\r\n";
-                text += "#L" + (250000 + i) + "#   #d└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                text += "#L" + (250000 + i) + "#   #d└─ [购买补齐: 缺 " + diff + " 个 | 单价: " + item.getUnitPrice() + " 金币 | 共需: " + item.getTotalPrice() + " 金币 (" + originType + ")]#k#l\r\n";
             } else {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "#【#b" + item.getItemName() + "#k】 (" + item.getCurrentCount() + "/" + item.getRequiredCount() + ")" + statusTag + " -> #d[查看掉落/传送]#k #r(特殊/剧情道具需手动获取)#k#l\r\n";
             }
@@ -292,17 +294,29 @@ function handleDetailSelection(selection) {
         return;
     }
 
-    // 一键补齐当前任务全部普通怪物材料
+    // 一键同步账号击杀并购买全部普通材料
     if (selection === 10000) {
         var service = cm.getQuestHelp();
-        var res = service.deliverAllRegularMaterials(cm.getPlayer(), selectedQuestId);
+        var res = service.deliverAllQuestObjectives(cm.getPlayer(), selectedQuestId);
         pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
         status = 1;
         action(1, 0, selectedQuestId);
         return;
     }
 
-    // 单项补齐指定普通怪物材料
+    // 单项同步指定怪物的账号历史击杀
+    if (selection >= 150000 && selection < 200000) {
+        var index = selection - 150000;
+        var mob = currentDetail.getMobObjectives().get(index);
+        var service = cm.getQuestHelp();
+        var res = service.syncQuestMobKill(cm.getPlayer(), selectedQuestId, mob.getMobId());
+        pendingNotice = res.isSuccess() ? "#d" + res.getMessage() + "#k" : "#r" + res.getMessage() + "#k";
+        status = 1;
+        action(1, 0, selectedQuestId);
+        return;
+    }
+
+    // 单项补齐指定普通材料/商店道具
     if (selection >= 250000 && selection < 300000) {
         var index = selection - 250000;
         var item = currentDetail.getItemObjectives().get(index);
