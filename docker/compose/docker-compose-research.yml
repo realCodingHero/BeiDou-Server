@@ -1,3 +1,5 @@
+name: beidou-research
+
 services:
   beidou-server:
     container_name: beidou-research-nightly-server
