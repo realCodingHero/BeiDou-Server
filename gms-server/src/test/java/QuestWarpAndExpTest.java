@@ -171,4 +171,38 @@ public class QuestWarpAndExpTest {
         assertEquals(750000L, 7500L * 100);
         assertEquals(1800000L, 18000L * 100);
     }
+
+    @Test
+    public void testPartialMobObjectiveSync() {
+        // 场景 1：需求 20 只，当前 0 只，历史 10 只 -> 可填充 10 只，费用 10 * 50 = 500
+        QuestHelpService.MobObjective obj1 = new QuestHelpService.MobObjective(100100, "蜗牛", 5, 0, 20, false, 10L, 50, null);
+        assertEquals(20, obj1.getRequiredKills());
+        assertEquals(0, obj1.getCurrentKills());
+        assertEquals(10L, obj1.getAccountKills());
+        assertEquals(10, obj1.getTargetKills());
+        assertEquals(10, obj1.getSyncCount());
+        assertEquals(true, obj1.isSyncable());
+        assertEquals(false, obj1.isFullSync());
+        assertEquals(500L, obj1.getTotalCost());
+
+        // 场景 2：需求 20 只，当前 0 只，历史 50 只 -> 可直接补满 20 只，费用 20 * 50 = 1000
+        QuestHelpService.MobObjective obj2 = new QuestHelpService.MobObjective(100100, "蜗牛", 5, 0, 20, false, 50L, 50, null);
+        assertEquals(20, obj2.getTargetKills());
+        assertEquals(20, obj2.getSyncCount());
+        assertEquals(true, obj2.isSyncable());
+        assertEquals(true, obj2.isFullSync());
+        assertEquals(1000L, obj2.getTotalCost());
+
+        // 场景 3：需求 20 只，当前 12 只，历史 10 只 -> 当前进度已超过历史击杀，不可填充 (syncCount = 0)
+        QuestHelpService.MobObjective obj3 = new QuestHelpService.MobObjective(100100, "蜗牛", 5, 12, 20, false, 10L, 50, null);
+        assertEquals(10, obj3.getTargetKills());
+        assertEquals(0, obj3.getSyncCount());
+        assertEquals(false, obj3.isSyncable());
+        assertEquals(0L, obj3.getTotalCost());
+
+        // 场景 4：Boss 怪物 -> 无论击杀数多少，始终不可同步
+        QuestHelpService.MobObjective obj4 = new QuestHelpService.MobObjective(999999, "Boss", 100, 0, 1, true, 10L, 0, null);
+        assertEquals(false, obj4.isSyncable());
+        assertEquals(0, obj4.getSyncCount());
+    }
 }
