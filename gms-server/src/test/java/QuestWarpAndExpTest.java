@@ -84,8 +84,24 @@ public class QuestWarpAndExpTest {
         @SuppressWarnings("unchecked")
         Map<Integer, Map<Integer, Long>> killsCache = (Map<Integer, Map<Integer, Long>>) killsField.get(service);
 
-        killsCache.computeIfAbsent(1001, k -> new ConcurrentHashMap<>()).put(100100, 150L);
-        assertEquals(150L, service.getAccountMobKills(1001, 100100));
+        Field mobNameField = QuestHelpService.class.getDeclaredField("mobNameCache");
+        mobNameField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, String> mobNameCache = (Map<Integer, String>) mobNameField.get(service);
+        mobNameCache.put(1110100, "绿蘑菇");
+        mobNameCache.put(1110101, "绿蘑菇");
+        mobNameCache.put(999999, "未知怪");
+
+        // 注入 1110100 (绿蘑菇) 150 次击杀
+        killsCache.computeIfAbsent(1001, k -> new ConcurrentHashMap<>()).put(1110100, 150L);
+        service.addMobAlias(1110100, 1110101, 9101000);
+
+        // 查询 1110100 自身
+        assertEquals(150L, service.getAccountMobKills(1001, 1110100));
+        // 通过任务变种别名 1110101 查询，应智能聚合得到 150
+        assertEquals(150L, service.getAccountMobKills(1001, 1110101));
+        // 未击杀的怪物返回 0
+        killsCache.get(1001).put(999999, 0L);
         assertEquals(0L, service.getAccountMobKills(1001, 999999));
     }
 }

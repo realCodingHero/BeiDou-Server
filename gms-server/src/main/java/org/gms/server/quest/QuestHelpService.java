@@ -115,6 +115,7 @@ public final class QuestHelpService {
     private final Map<Integer, Set<Integer>> npcToMaps = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> mapGraph = new ConcurrentHashMap<>();
     private final Map<String, Set<Integer>> nameToMobIds = new ConcurrentHashMap<>();
+    private final Map<Integer, Set<Integer>> mobAliasMap = new ConcurrentHashMap<>();
     private final Map<Integer, String> mobNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> npcNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> itemNameCache = new ConcurrentHashMap<>();
@@ -137,6 +138,21 @@ public final class QuestHelpService {
     }
 
     private QuestHelpService() {
+    }
+
+    public void addMobAlias(int... ids) {
+        if (ids == null || ids.length <= 1) {
+            return;
+        }
+        Set<Integer> group = ConcurrentHashMap.newKeySet();
+        for (int id : ids) {
+            if (id > 0) {
+                group.add(id);
+            }
+        }
+        for (int id : group) {
+            mobAliasMap.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).addAll(group);
+        }
     }
 
     public void ensureInitialized() {
@@ -170,7 +186,30 @@ public final class QuestHelpService {
             log.warn("Failed to load plife table for quest help service", e);
         }
 
-        // 构建怪物名称倒排索引，用于极速 O(1) 反查同名任务变种怪的野外地图
+        // 1. 构建全量怪物名称倒排索引（从 String.wz/Mob.img 读取所有怪物 ID 与名称）
+        try {
+            DataProvider stringSource = DataProviderFactory.getDataProvider(WZFiles.STRING);
+            if (stringSource != null) {
+                Data mobData = stringSource.getData("Mob.img");
+                if (mobData != null) {
+                    for (Data mobNode : mobData.getChildren()) {
+                        try {
+                            int mobId = Integer.parseInt(mobNode.getName());
+                            String name = DataTool.getString("name", mobNode, null);
+                            if (name != null && !name.isBlank() && !name.startsWith("怪物 ") && !"MISSINGNO".equals(name)) {
+                                nameToMobIds.computeIfAbsent(name, k -> ConcurrentHashMap.newKeySet()).add(mobId);
+                                mobNameCache.put(mobId, name);
+                            }
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load String.wz/Mob.img for mob name inverted index", e);
+        }
+
+        // 2. 补全地图刷怪名称反查
         for (int mobId : mobToMaps.keySet()) {
             String name = getMobName(mobId);
             if (name != null && !name.isBlank() && !name.startsWith("怪物 ") && !"MISSINGNO".equals(name)) {
@@ -178,7 +217,12 @@ public final class QuestHelpService {
             }
         }
 
-        // 加载原生 NPC 商店物品与价格（排除 GM 商店 1337 以及非地图 NPC）
+        // 3. 注册常见任务变种怪物别名关联组（支持别名账号击杀跨ID直接互认聚合）
+        addMobAlias(MobId.GREEN_MUSHROOM, MobId.DEJECTED_GREEN_MUSHROOM, MobId.GREEN_MUSHROOM_QUEST, 1110101);
+        addMobAlias(MobId.ZOMBIE_MUSHROOM, MobId.ANNOYED_ZOMBIE_MUSHROOM, MobId.ZOMBIE_MUSHROOM_QUEST);
+        addMobAlias(MobId.GHOST_STUMP, MobId.SMIRKING_GHOST_STUMP, MobId.GHOST_STUMP_QUEST);
+
+        // 4. 加载原生 NPC 商店物品与价格（排除 GM 商店 1337 以及非地图 NPC）
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(
                      "SELECT s.npcid, si.itemid, si.price " +
@@ -199,8 +243,8 @@ public final class QuestHelpService {
             log.warn("Failed to load native shops for quest help service", e);
         }
 
-        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} shop items",
-                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size());
+        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} shop items, {} named mobs",
+                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size());
     }
 
     private void scanDir(DataProvider mapSource, DataEntity entity) {
@@ -619,12 +663,46 @@ public final class QuestHelpService {
     }
 
     /**
-     * 获取账号累计消灭某怪物的总数
+     * 获取指定怪物的关联怪物 ID 集合（包含自身、硬编码别名变种、以及同名怪物）
+     */
+    public Set<Integer> getRelatedMobIds(int mobId) {
+        if (mobId <= 0) {
+            return Collections.emptySet();
+        }
+        Set<Integer> result = new HashSet<>();
+        result.add(mobId);
+
+        Set<Integer> aliases = mobAliasMap.get(mobId);
+        if (aliases != null) {
+            result.addAll(aliases);
+        }
+
+        String name = getMobName(mobId);
+        if (name != null && !name.isBlank() && !name.startsWith("怪物 ") && !"MISSINGNO".equals(name)) {
+            Set<Integer> sameNameIds = nameToMobIds.get(name);
+            if (sameNameIds != null) {
+                result.addAll(sameNameIds);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 获取账号累计消灭某怪物的总数（支持同名怪及任务变种怪智能聚合）
      */
     public long getAccountMobKills(int accountId, int mobId) {
         if (accountId <= 0 || mobId <= 0) {
             return 0L;
         }
+        Set<Integer> relatedIds = getRelatedMobIds(mobId);
+        long totalKills = 0L;
+        for (int id : relatedIds) {
+            totalKills += getDirectAccountMobKills(accountId, id);
+        }
+        return totalKills;
+    }
+
+    private long getDirectAccountMobKills(int accountId, int mobId) {
         Map<Integer, Long> map = accountMobKillsCache.get(accountId);
         if (map != null && map.containsKey(mobId)) {
             return map.get(mobId);
@@ -1195,8 +1273,12 @@ public final class QuestHelpService {
 
     private String getMobName(int mobId) {
         return mobNameCache.computeIfAbsent(mobId, id -> {
-            String name = MonsterInformationProvider.getInstance().getMobNameFromId(id);
-            return (name == null || name.isBlank()) ? "怪物 " + id : name;
+            try {
+                String name = MonsterInformationProvider.getInstance().getMobNameFromId(id);
+                return (name == null || name.isBlank()) ? "怪物 " + id : name;
+            } catch (Throwable t) {
+                return "怪物 " + id;
+            }
         });
     }
 
