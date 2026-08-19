@@ -678,14 +678,12 @@ public class Server {
         // 利用虚拟线程，减少开销
         log.info(I18nUtil.getLogMessage("Server.init.info2"));
         try (ExecutorService initExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // 加载wz
+            // 加载核心wz
             final List<Future<?>> futures = new ArrayList<>();
             futures.add(initExecutor.submit(SkillFactory::loadAllSkills));
             futures.add(initExecutor.submit(CashItemFactory::loadAllCashItems));
             futures.add(initExecutor.submit(Quest::loadAllQuests));
             futures.add(initExecutor.submit(SkillbookInformationProvider::loadAllSkillbookInformation));
-            futures.add(initExecutor.submit(org.gms.server.quest.QuestHelpService.getInstance()::ensureInitialized));
-            futures.add(initExecutor.submit(org.gms.server.shop.EquipShopService.getInstance()::initialize));
             // Wait on all async tasks to complete
             for (Future<?> future : futures) {
                 future.get();
@@ -696,6 +694,10 @@ public class Server {
             throw new IllegalStateException(e);
         }
         log.info(I18nUtil.getLogMessage("Server.init.info3"));
+
+        // 异步后台加载辅助服务，避免阻塞主游戏服务与登录网关启动
+        Thread.ofVirtual().name("Async-QuestHelpService-Init").start(org.gms.server.quest.QuestHelpService.getInstance()::ensureInitialized);
+        Thread.ofVirtual().name("Async-EquipShopService-Init").start(org.gms.server.shop.EquipShopService.getInstance()::initialize);
 
         TimeZone.setDefault(TimeZone.getTimeZone(GameConfig.getServerString("timezone")));
 
