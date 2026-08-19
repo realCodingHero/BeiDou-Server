@@ -283,20 +283,14 @@ function showQuestDetail(questId) {
         text += "#e【 NPC 导航传送 】#n\r\n";
         if (startNpc) {
             var startMap = (startNpc.getMaps() && startNpc.getMaps().size() > 0) ? startNpc.getMaps().get(0) : null;
-            var locStr = startMap ? (startMap.getStreetName().equals(startMap.getMapName()) || startMap.getStreetName().isBlank() ? startMap.getMapName() : startMap.getStreetName() + " - " + startMap.getMapName()) : "未知区域";
-            if (locStr.length > 18) {
-                locStr = startMap.getMapName();
-            }
+            var locStr = formatLocationName(startMap);
             var costStr = startMap && startMap.getWarpCost() > 0 ? " (费用: " + startMap.getWarpCost() + "金币)" : "";
             text += " 接取NPC：#b" + startNpc.getNpcName() + "#k (" + locStr + ")\r\n";
             text += "#L300001#   #b[传送]#k #d传送至接取NPC所在地图" + costStr + "#k#l\r\n";
         }
         if (compNpc) {
             var compMap = (compNpc.getMaps() && compNpc.getMaps().size() > 0) ? compNpc.getMaps().get(0) : null;
-            var locStr = compMap ? (compMap.getStreetName().equals(compMap.getMapName()) || compMap.getStreetName().isBlank() ? compMap.getMapName() : compMap.getStreetName() + " - " + compMap.getMapName()) : "未知区域";
-            if (locStr.length > 18) {
-                locStr = compMap.getMapName();
-            }
+            var locStr = formatLocationName(compMap);
             var costStr = compMap && compMap.getWarpCost() > 0 ? " (费用: " + compMap.getWarpCost() + "金币)" : "";
             text += " 交付NPC：#b" + compNpc.getNpcName() + "#k (" + locStr + ")\r\n";
             text += "#L300002#   #b[传送]#k #d传送至交付NPC所在地图" + costStr + "#k#l\r\n";
@@ -572,6 +566,17 @@ function handleMapWarp(selection) {
     }
 
     cm.dispose();
+}
+
+function formatLocationName(map) {
+    if (!map) return "未知地图";
+    var street = map.getStreetName() ? ("" + map.getStreetName()).trim() : "";
+    var name = map.getMapName() ? ("" + map.getMapName()).trim() : "";
+    if (street !== "" && name !== "" && street !== name) {
+        var combined = street + " - " + name;
+        return (combined.length <= 16) ? combined : name;
+    }
+    return (name !== "") ? name : (street !== "" ? street : "地图 (" + map.getMapId() + ")");
 }
 
 function getMapDisplayWithLock(map) {
