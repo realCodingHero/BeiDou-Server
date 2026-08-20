@@ -275,7 +275,13 @@ function showQuestDetail(questId) {
             } else {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 (#r" + item.getCurrentCount() + "/" + item.getRequiredCount() + "#k) -> #d[掉落]#k#l\r\n";
                 if (item.isDeliverable()) {
-                    text += "#L" + (250000 + i) + "#   └─ #d[购买补齐: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                    if (item.isQuestExclusive()) {
+                        text += "#L" + (250000 + i) + "#   └─ #d[★ 样本已解锁购买: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                    } else {
+                        text += "#L" + (250000 + i) + "#   └─ #d[购买补齐: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                    }
+                } else if (item.isQuestExclusive() && item.getCurrentCount() === 0) {
+                    text += "#L" + (200000 + i) + "#   └─ #r(专属任务道具: 需背包至少持有1个样本以解锁购买)#k#l\r\n";
                 } else {
                     text += "#L" + (200000 + i) + "#   └─ #r(剧情/特殊道具需手动获取)#k#l\r\n";
                 }
@@ -368,9 +374,13 @@ function handleDetailSelection(selection) {
         var item = currentDetail.getItemObjectives().get(index);
         var diff = item.getRequiredCount() - item.getCurrentCount();
 
-        var confirmText = "#e#b【购买补齐材料确认】#k#n\r\n\r\n"
+        var tagHeader = item.isQuestExclusive() ? "【购买专属任务道具确认(样本已解锁)】" : "【购买补齐材料确认】";
+        var exclusiveTip = item.isQuestExclusive() ? " - 提示说明：#b专属任务道具已通过背包样本解锁（含专属溢价）#k\r\n" : "";
+
+        var confirmText = "#e#b" + tagHeader + "#k#n\r\n\r\n"
             + "本次任务目标：\r\n"
-            + " - 收集道具：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 x " + diff + " 个\r\n\r\n"
+            + " - 收集道具：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 x " + diff + " 个\r\n"
+            + exclusiveTip
             + "本次购买补齐将消耗：\r\n"
             + " - 道具单价：#r" + item.getUnitPrice() + "#k 金币\r\n"
             + " - 所需金币：#r" + item.getTotalPrice() + "#k 金币\r\n"

@@ -126,7 +126,9 @@ public final class QuestHelpService {
     private final Map<Integer, List<MapLocation>> npcMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> regularMaterialCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Boolean> questExclusiveCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> materialUnitPriceCache = new ConcurrentHashMap<>();
+    private final Map<Long, Integer> questExclusiveUnitPriceCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> nativeShopItemPrices = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> nativeShopItemNpcs = new ConcurrentHashMap<>();
     private final Map<Integer, Map<Integer, Long>> accountMobKillsCache = new ConcurrentHashMap<>();
@@ -835,6 +837,106 @@ public final class QuestHelpService {
     }
 
     /**
+     * 判断道具是否为专属任务道具（例如 403xxxx、标记为 quest/notSale/tradeBlock 等），
+     * 仅当玩家背包中已有至少 1 个样品时才允许购买补齐。
+     * 严格排除：装备(1xxxxxx)、商城道具(5xxxxxx)。
+     */
+    public boolean isQuestExclusiveItem(int itemId) {
+        return questExclusiveCache.computeIfAbsent(itemId, id -> {
+            InventoryType invType = ItemConstants.getInventoryType(id);
+            if (invType != InventoryType.ETC && invType != InventoryType.USE && invType != InventoryType.SETUP) {
+                return false;
+            }
+            if (isRegularMonsterMaterial(id) || isNativeShopItem(id)) {
+                return false;
+            }
+
+            if (id >= 4030000 && id < 4040000) {
+                return true;
+            }
+
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            if (ii.isQuestItem(id) || ii.isPartyQuestItem(id) || ii.isPickupRestricted(id) ||
+                ii.isUntradeableRestricted(id) || ii.isAccountRestricted(id) || ii.isDropRestricted(id)) {
+                return true;
+            }
+
+            Data itemData = ii.getItemData(id);
+            if (itemData != null) {
+                int notSale = DataTool.getIntConvert("info/notSale", itemData, 0);
+                int tradeBlock = DataTool.getIntConvert("info/tradeBlock", itemData, 0);
+                int quest = DataTool.getIntConvert("info/quest", itemData, 0);
+                if (notSale == 1 || tradeBlock == 1 || quest == 1) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+    }
+
+    /**
+     * 计算专属任务道具的单价（专属溢价模型）
+     */
+    public int getQuestExclusiveUnitPrice(int itemId, int questId) {
+        long cacheKey = ((long) questId << 32) | (itemId & 0xFFFFFFFFL);
+        return questExclusiveUnitPriceCache.computeIfAbsent(cacheKey, key -> {
+            int bestMobLevel = 20;
+            int bestChance = 50000;
+            boolean foundMob = false;
+
+            List<DropMobInfo> dropMobs = null;
+            try {
+                dropMobs = getDropMobsForItem(itemId);
+            } catch (Throwable ignored) {
+            }
+
+            if (dropMobs != null && !dropMobs.isEmpty()) {
+                for (DropMobInfo mob : dropMobs) {
+                    int mobId = mob.getMobId();
+                    int chance = mob.getChance();
+                    int mobLevel = 20;
+                    try {
+                        mobLevel = LifeFactory.getMonsterLevel(mobId);
+                    } catch (Throwable ignored) {
+                    }
+                    if (mobLevel <= 0) {
+                        mobLevel = 20;
+                    }
+                    if (!foundMob || chance > bestChance) {
+                        bestChance = Math.max(1, chance);
+                        bestMobLevel = Math.max(1, mobLevel);
+                        foundMob = true;
+                    }
+                }
+            }
+
+            if (!foundMob && questId > 0) {
+                try {
+                    Quest q = Quest.getInstance(questId);
+                    if (q != null && q.getMinLevel() > 0) {
+                        bestMobLevel = Math.max(20, q.getMinLevel());
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+
+            double basePrice = 2000.0 + (bestMobLevel * 100.0);
+            double ratio = 500000.0 / bestChance;
+            double rarityFactor = Math.pow(ratio, 0.90);
+            if (rarityFactor < 1.0) {
+                rarityFactor = 1.0;
+            } else if (rarityFactor > 10.0) {
+                rarityFactor = 10.0;
+            }
+
+            double premiumMultiplier = 3.5;
+            int unitPrice = (int) Math.round(basePrice * rarityFactor * premiumMultiplier);
+            return Math.max(5000, unitPrice);
+        });
+    }
+
+    /**
      * 记录账号怪物击杀历史（严格排除 Boss）
      */
     public void recordMobKill(int accountId, int mobId, boolean isBoss) {
@@ -1001,7 +1103,8 @@ public final class QuestHelpService {
                     currentCount = player.getInventory(iType).countById(itemId);
                 }
                 if (currentCount < reqCount) {
-                    if (!isPurchasableMaterial(itemId)) {
+                    boolean deliverableItem = isPurchasableMaterial(itemId) || (isQuestExclusiveItem(itemId) && currentCount >= 1);
+                    if (!deliverableItem) {
                         return false; // 有未达成的不可购买道具
                     }
                     hasIncompleteSyncableOrPurchasable = true;
@@ -1154,11 +1257,26 @@ public final class QuestHelpService {
             if (iType != null && !iType.equals(InventoryType.UNDEFINED) && player.getInventory(iType) != null) {
                 currentCount = player.getInventory(iType).countById(itemId);
             }
-            boolean deliverable = isPurchasableMaterial(itemId);
+            boolean isRegular = isPurchasableMaterial(itemId);
             boolean isShop = isNativeShopItem(itemId);
-            int unitPrice = deliverable ? getMaterialUnitPrice(itemId) : 0;
+            boolean isExclusive = isQuestExclusiveItem(itemId);
+            boolean sampleUnlocked = isExclusive && currentCount >= 1;
+
+            boolean deliverable;
+            int unitPrice;
+            if (isRegular) {
+                deliverable = true;
+                unitPrice = getMaterialUnitPrice(itemId);
+            } else if (isExclusive) {
+                deliverable = sampleUnlocked;
+                unitPrice = getQuestExclusiveUnitPrice(itemId, questId);
+            } else {
+                deliverable = false;
+                unitPrice = 0;
+            }
+
             List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
-            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, isShop, unitPrice, dropMobs));
+            itemObjectives.add(new ItemObjective(itemId, getItemName(itemId), currentCount, reqCount, deliverable, isShop, isExclusive, sampleUnlocked, unitPrice, dropMobs));
         }
         itemObjectives.sort(Comparator.comparingInt(ItemObjective::getItemId));
 
@@ -1390,7 +1508,9 @@ public final class QuestHelpService {
         if (reqCount == null || reqCount <= 0) {
             return new DeliveryResult(false, "该任务不需要此道具。", 0);
         }
-        if (!isPurchasableMaterial(itemId)) {
+        boolean isRegular = isPurchasableMaterial(itemId);
+        boolean isExclusive = isQuestExclusiveItem(itemId);
+        if (!isRegular && !isExclusive) {
             return new DeliveryResult(false, "该道具属于特殊/剧情/Boss掉落道具，不支持快捷购买，请在游戏中探索获取！", 0);
         }
 
@@ -1399,12 +1519,26 @@ public final class QuestHelpService {
         if (player.getInventory(iType) != null) {
             currentCount = player.getInventory(iType).countById(itemId);
         }
+
+        if (isExclusive && currentCount <= 0) {
+            return new DeliveryResult(false, "该道具为专属任务道具，背包中需至少持有 1 个作为样本才能解锁快捷购买！", 0);
+        }
+
         int neededCount = reqCount - currentCount;
         if (neededCount <= 0) {
             return new DeliveryResult(true, "您背包中已有足够的 【" + getItemName(itemId) + "】（" + currentCount + "/" + reqCount + "），无需购买！", 0);
         }
 
-        int unitPrice = getMaterialUnitPrice(itemId);
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        Data itemData = ii.getItemData(itemId);
+        if (itemData != null) {
+            int only = DataTool.getIntConvert("info/only", itemData, 0);
+            if (only == 1 && currentCount + neededCount > 1) {
+                return new DeliveryResult(false, "该道具为唯一道具（只能持有1个），无法批量购买！", 0);
+            }
+        }
+
+        int unitPrice = isRegular ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
         long totalCost = (long) unitPrice * neededCount;
         if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
             return new DeliveryResult(false, "您的金币不足！购买 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + " 共需 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
@@ -1445,21 +1579,34 @@ public final class QuestHelpService {
 
         Map<Integer, Integer> toDeliver = new java.util.LinkedHashMap<>();
         int deliverableItemTypes = 0;
+        int lockedExclusiveItemTypes = 0;
         int restrictedItemTypes = 0;
 
         for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
             int itemId = entry.getKey();
             int req = entry.getValue();
-            if (isPurchasableMaterial(itemId)) {
+            boolean isRegular = isPurchasableMaterial(itemId);
+            boolean isExclusive = isQuestExclusiveItem(itemId);
+            InventoryType iType = ItemConstants.getInventoryType(itemId);
+            int cur = 0;
+            if (player.getInventory(iType) != null) {
+                cur = player.getInventory(iType).countById(itemId);
+            }
+            int diff = req - cur;
+
+            if (isRegular) {
                 deliverableItemTypes++;
-                InventoryType iType = ItemConstants.getInventoryType(itemId);
-                int cur = 0;
-                if (player.getInventory(iType) != null) {
-                    cur = player.getInventory(iType).countById(itemId);
-                }
-                int diff = req - cur;
                 if (diff > 0) {
                     toDeliver.put(itemId, diff);
+                }
+            } else if (isExclusive) {
+                if (cur >= 1) {
+                    deliverableItemTypes++;
+                    if (diff > 0) {
+                        toDeliver.put(itemId, diff);
+                    }
+                } else {
+                    lockedExclusiveItemTypes++;
                 }
             } else {
                 restrictedItemTypes++;
@@ -1467,11 +1614,18 @@ public final class QuestHelpService {
         }
 
         if (deliverableItemTypes == 0) {
-            return new DeliveryResult(false, "该任务所需道具均为特殊/剧情/Boss道具，不支持快捷购买，需手动探索获取！", 0);
+            String msg = "该任务所需道具不支持快捷购买！";
+            if (lockedExclusiveItemTypes > 0) {
+                msg += "\r\n#r注：有 " + lockedExclusiveItemTypes + " 种专属任务道具需背包持有至少1个样本以解锁快捷购买。#k";
+            }
+            return new DeliveryResult(false, msg, 0);
         }
 
         if (toDeliver.isEmpty()) {
-            String msg = "该任务所需的所有普通/商店材料您已全部集齐，无需购买！";
+            String msg = "该任务所需的所有可购买/已解锁材料您已全部集齐，无需购买！";
+            if (lockedExclusiveItemTypes > 0) {
+                msg += "\r\n#r注：尚有 " + lockedExclusiveItemTypes + " 种专属道具因背包无样本未解锁。#k";
+            }
             if (restrictedItemTypes > 0) {
                 msg += "\r\n#r注：尚有 " + restrictedItemTypes + " 种特殊/剧情道具需手动探索获取。#k";
             }
@@ -1482,7 +1636,7 @@ public final class QuestHelpService {
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
-            int unitPrice = getMaterialUnitPrice(itemId);
+            int unitPrice = isPurchasableMaterial(itemId) ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
             totalCost += (long) unitPrice * qty;
         }
 
@@ -1514,7 +1668,7 @@ public final class QuestHelpService {
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
-            int unitPrice = getMaterialUnitPrice(itemId);
+            int unitPrice = isPurchasableMaterial(itemId) ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
             long itemCost = (long) unitPrice * qty;
             org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助购买材料", -1);
             totalCount += qty;
@@ -1522,6 +1676,9 @@ public final class QuestHelpService {
               .append(" (单价: ").append(unitPrice).append(" 金币, 小计: ").append(itemCost).append(" 金币)\r\n");
         }
 
+        if (lockedExclusiveItemTypes > 0) {
+            sb.append("\r\n#r注：尚有 ").append(lockedExclusiveItemTypes).append(" 种专属道具因背包无样本未包含在本次购买中。#k");
+        }
         if (restrictedItemTypes > 0) {
             sb.append("\r\n#r注：该任务仍有 ").append(restrictedItemTypes).append(" 种特殊/剧情道具需手动探索获取。#k");
         }
@@ -1989,17 +2146,21 @@ public final class QuestHelpService {
         private final int requiredCount;
         private final boolean deliverable;
         private final boolean nativeShopItem;
+        private final boolean questExclusive;
+        private final boolean sampleUnlocked;
         private final int unitPrice;
         private final long totalPrice;
         private final List<DropMobInfo> dropMobs;
 
-        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, boolean nativeShopItem, int unitPrice, List<DropMobInfo> dropMobs) {
+        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, boolean nativeShopItem, boolean questExclusive, boolean sampleUnlocked, int unitPrice, List<DropMobInfo> dropMobs) {
             this.itemId = itemId;
             this.itemName = itemName;
             this.currentCount = currentCount;
             this.requiredCount = requiredCount;
             this.deliverable = deliverable;
             this.nativeShopItem = nativeShopItem;
+            this.questExclusive = questExclusive;
+            this.sampleUnlocked = sampleUnlocked;
             this.unitPrice = unitPrice;
             this.totalPrice = (long) unitPrice * Math.max(0, requiredCount - currentCount);
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
@@ -2027,6 +2188,14 @@ public final class QuestHelpService {
 
         public boolean isNativeShopItem() {
             return nativeShopItem;
+        }
+
+        public boolean isQuestExclusive() {
+            return questExclusive;
+        }
+
+        public boolean isSampleUnlocked() {
+            return sampleUnlocked;
         }
 
         public int getUnitPrice() {
