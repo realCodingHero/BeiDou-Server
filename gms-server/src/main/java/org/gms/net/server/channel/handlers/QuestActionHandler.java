@@ -80,6 +80,9 @@ public final class QuestActionHandler extends AbstractPacketHandler {
     public final void handlePacket(InPacket p, Client c) {
         byte action = p.readByte();
         short questid = p.readShort();
+        if (questid <= 0) {
+            return;
+        }
         Character player = c.getPlayer();
         Quest quest = Quest.getInstance(questid);
         if (player.getMapId() == MapId.JAIL) {   //监狱地图不可使用任务脚本
