@@ -2062,6 +2062,11 @@ public class Character extends AbstractCharacterObject {
                         if (totalMeso > 0) {
                             this.gainMeso(totalMeso, false, false, false);
                         }
+                        String itemName = ii.getName(mItem.getItemId());
+                        if (itemName == null || itemName.isBlank()) {
+                            itemName = "杂物";
+                        }
+                        this.showHint("卖出 " + itemName + " x" + mItem.getQuantity() + " 获得 " + totalMeso + " 金币", 250);
                         this.getMap().pickItemDrop(pickupPacket, mapitem);
                         enableActions();
                         return;
