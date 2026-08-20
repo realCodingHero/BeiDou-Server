@@ -50,29 +50,9 @@ function action(mode, type, selection) {
                 return;
             }
 
-            if (currentState === STATE_MAIN_MENU) {
-                cm.dispose();
-                return;
-            } else if (currentState === STATE_QUEST_LIST) {
-                currentState = STATE_MAIN_MENU;
-                showMainMenu();
-                return;
-            } else if (currentState === STATE_QUEST_DETAIL) {
-                currentState = STATE_QUEST_LIST;
-                showQuestList(selectedCategory);
-                return;
-            } else if (currentState === STATE_SUB_MENU) {
-                currentState = STATE_QUEST_DETAIL;
-                showQuestDetail(selectedQuestId);
-                return;
-            } else if (currentState === STATE_MAP_LIST) {
-                currentState = STATE_SUB_MENU;
-                showDropMobList(selectedItem);
-                return;
-            } else {
-                cm.dispose();
-                return;
-            }
+            // 无论当前处于哪一层级，点击【结束对话】或按 Esc 均立即彻底退出
+            cm.dispose();
+            return;
         }
 
         // 3. 处理正常交互与二次确认“是” (mode === 1)
@@ -169,7 +149,7 @@ function showQuestList(category) {
 
     if (list.size() === 0) {
         text += (category === 1) ? "当前没有任何已达成全部条件的任务。\r\n" : "您当前尚未接取任何任务。\r\n";
-        text += "\r\n#L999999##b[返回上一层]#k#l";
+        text += "\r\n#L999999##b◀ [返回主菜单]#k#l";
         cm.sendSimple(text);
         return;
     }
@@ -185,7 +165,7 @@ function showQuestList(category) {
         text += "#L" + item.getQuestId() + "# [Lv." + item.getMinLevel() + "] #b" + item.getQuestName() + "#k" + tag + "#l\r\n";
     }
 
-    text += "\r\n#L999999##b[返回上一层]#k#l";
+    text += "\r\n#L999999##b◀ [返回主菜单]#k#l";
     cm.sendSimple(text);
 }
 
@@ -327,7 +307,7 @@ function showQuestDetail(questId) {
         text += "该任务为纯对话/探索类任务，无需特定击杀或物品收集。\r\n\r\n";
     }
 
-    text += "#L999999##b[返回任务列表]#k#l";
+    text += "#L999999##b◀ [返回任务列表]#k#l";
     cm.sendSimple(text);
 }
 
@@ -460,7 +440,7 @@ function showMobMapList(mob) {
         var map = currentMapList.get(i);
         text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
-    text += "\r\n#L999998##b[返回任务详情]#k#l";
+    text += "\r\n#L999998##b◀ [返回任务详情]#k#l";
     cm.sendSimple(text);
 }
 
@@ -489,7 +469,7 @@ function showDropMobList(item) {
             text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
         }
     }
-    text += "\r\n#L999998##b[返回任务详情]#k#l";
+    text += "\r\n#L999998##b◀ [返回任务详情]#k#l";
     cm.sendSimple(text);
 }
 
@@ -519,7 +499,7 @@ function showNpcMapList(npc, npcType) {
         var map = currentMapList.get(i);
         text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
-    text += "\r\n#L999998##b[返回任务详情]#k#l";
+    text += "\r\n#L999998##b◀ [返回任务详情]#k#l";
     cm.sendSimple(text);
 }
 
@@ -581,7 +561,7 @@ function showDropMobMapList(dropMob) {
         var map = currentMapList.get(i);
         text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
-    text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
+    text += "\r\n#L999997##b◀ [返回掉落怪物列表]#k#l";
     cm.sendSimple(text);
 }
 
