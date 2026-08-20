@@ -50,7 +50,7 @@ function showSettingMenu() {
     text += "#L0##b模式 0：正常拾取#k (默认行为，所有杂物正常放入背包)#l\r\n";
     text += "#L1##b模式 1：忽略杂物#k (宠物跳过普通杂物不捡，背包零负担)#l\r\n";
     text += "#L2##b模式 2：自动出售#k (宠物拾取杂物自动按店价折算为金币，不占背包)#l\r\n\r\n";
-    text += "#L999999##b[返回昨日小睡主菜单]#k#l";
+    text += "#L999999##b[返回枫叶助手主菜单]#k#l";
 
     cm.sendSimple(text);
 }

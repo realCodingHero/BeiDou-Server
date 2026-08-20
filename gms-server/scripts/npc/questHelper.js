@@ -120,7 +120,7 @@ function showMainMenu() {
     }
 
     text += "#L2##b★ 查看当前进行中的任务列表#k #d(" + inProgressQuests.size() + " 个进行中)#k#l\r\n\r\n";
-    text += "#L999999##b[返回昨日小睡主菜单]#k#l";
+    text += "#L999999##b[返回枫叶助手主菜单]#k#l";
 
     cm.sendSimple(text);
 }

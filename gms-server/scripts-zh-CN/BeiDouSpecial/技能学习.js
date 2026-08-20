@@ -55,7 +55,7 @@ function showSkillList() {
         text += "#L1##b#s2101002# #q2101002##k (学习并绑定#e+#n键)#l\r\n\r\n";
     }
     
-    text += "#L2##b[返回昨日小睡主菜单]#k#l";
+    text += "#L2##b[返回枫叶助手主菜单]#k#l";
     
     cm.sendSimple(text);
 }

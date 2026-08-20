@@ -951,7 +951,7 @@ function action(mode, type, selection) {
         text += "#L30#发色#l\r\n";
         text += "#L40#脸色#l\r\n";
         text += "#L50#肤色#l\r\n\r\n";
-        text += "#L9999##b[返回昨日小睡主菜单]#k#l\r\n";
+        text += "#L9999##b[返回枫叶助手主菜单]#k#l\r\n";
         cm.sendSimple(text);
     } else if (status === 1) {
         if (selection === 9999) {

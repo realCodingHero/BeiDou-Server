@@ -2333,7 +2333,7 @@ function action(mode, type, selection)
                 if (i%3 == 0)
                     title +="\r\n";				
 			}
-			title += "\r\n\r\n#L9999##b[返回昨日小睡主菜单]#k#l";
+			title += "\r\n\r\n#L9999##b[返回枫叶助手主菜单]#k#l";
 			cm.sendSimple(title + "#k\r\n----------------------------------------------------------------------------");
 	    }
 		else if (status == 1 )
