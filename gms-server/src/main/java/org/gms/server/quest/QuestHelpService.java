@@ -1020,9 +1020,13 @@ public final class QuestHelpService {
         for (QuestStatus qs : player.getStartedQuests()) {
             Quest q = qs.getQuest();
             if (q == null) continue;
+            // 过滤无效任务与内部数据记录（ID <= 0，或未在 WZ QuestInfo 中有效命名）
+            if (q.getId() <= 0) {
+                continue;
+            }
             String name = q.getName();
-            if (name == null || name.isBlank()) {
-                name = "任务 " + q.getId();
+            if (name == null || name.isBlank() || name.startsWith("任务 ")) {
+                continue;
             }
             int minLevel = q.getMinLevel();
             boolean canComplete = isQuestCompletable(player, q);
@@ -1067,7 +1071,7 @@ public final class QuestHelpService {
     }
 
     public QuestDetailInfo getQuestDetail(Character player, int questId) {
-        if (player == null) {
+        if (player == null || questId <= 0) {
             return null;
         }
         QuestStatus qs = player.getQuest(Quest.getInstance(questId));
@@ -1082,7 +1086,7 @@ public final class QuestHelpService {
     }
 
     public QuestDetailInfo getQuestDetailInfo(Character player, int questId) {
-        if (player == null) {
+        if (player == null || questId <= 0) {
             return null;
         }
         QuestStatus qs = player.getQuest(Quest.getInstance(questId));

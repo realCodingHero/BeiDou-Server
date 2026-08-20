@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class QuestWarpAndExpTest {
 
@@ -267,5 +268,15 @@ public class QuestWarpAndExpTest {
         assertEquals(true, service.isMapVisited(999, 101000000));
         assertEquals(false, service.isMapVisited(999, 211000000)); // 冰峰雪域未访问
         assertEquals(false, service.isMapVisited(999, 102000000)); // 勇士部落未访问
+    }
+
+    @Test
+    public void testInvalidAndNegativeQuestHandling() {
+        QuestHelpService service = QuestHelpService.getInstance();
+        // 验证非法或负数任务 ID 查询直接返回 null
+        assertNull(service.getQuestDetail(null, -31063));
+        assertNull(service.getQuestDetail(null, 0));
+        assertNull(service.getQuestDetailInfo(null, -31063));
+        assertNull(service.getQuestDetailInfo(null, 0));
     }
 }
