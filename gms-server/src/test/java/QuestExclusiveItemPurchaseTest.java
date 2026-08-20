@@ -47,14 +47,14 @@ public class QuestExclusiveItemPurchaseTest {
         assertFalse(unlockedItem.isCompleted());
         assertEquals(24400L, unlockedItem.getTotalPrice());
 
-        // 场景 3：普通材料道具 (0/5, 单价 500) -> 缺 5 个，5 * 500 = 2500
+        // 场景 3：普通材料道具 (0/50, 单价 500) -> 线性计价，50 * 500 = 25000（不适用专属阶梯加价）
         QuestHelpService.ItemObjective regularItem = new QuestHelpService.ItemObjective(
-                4000004, "绿水灵珠", 0, 5, true, false, false, false, 500, null
+                4000004, "绿水灵珠", 0, 50, true, false, false, false, 500, null
         );
         assertFalse(regularItem.isQuestExclusive());
         assertFalse(regularItem.isSampleUnlocked());
         assertTrue(regularItem.isDeliverable());
-        assertEquals(2500L, regularItem.getTotalPrice());
+        assertEquals(25000L, regularItem.getTotalPrice());
 
         // 场景 4：已集齐道具 (20/20) -> 已达成
         QuestHelpService.ItemObjective completedItem = new QuestHelpService.ItemObjective(
