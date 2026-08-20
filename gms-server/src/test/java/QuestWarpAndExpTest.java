@@ -248,4 +248,24 @@ public class QuestWarpAndExpTest {
         assertEquals(0, bossMob.getPurchasableKills());
         assertEquals(false, bossMob.isPurchasable());
     }
+
+    @Test
+    public void testTownAndHiddenMapWarpUnlockLogic() throws Exception {
+        QuestHelpService service = QuestHelpService.getInstance();
+
+        Field visitedCacheField = QuestHelpService.class.getDeclaredField("characterVisitedMapsCache");
+        visitedCacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, Set<Integer>> visitedCache = (Map<Integer, Set<Integer>>) visitedCacheField.get(service);
+
+        // 模拟角色 999 仅访问过魔法密林 101000000
+        Set<Integer> charVisited = ConcurrentHashMap.newKeySet();
+        charVisited.add(101000000);
+        visitedCache.put(999, charVisited);
+
+        // 验证已访问地图判断
+        assertEquals(true, service.isMapVisited(999, 101000000));
+        assertEquals(false, service.isMapVisited(999, 211000000)); // 冰峰雪域未访问
+        assertEquals(false, service.isMapVisited(999, 102000000)); // 勇士部落未访问
+    }
 }
