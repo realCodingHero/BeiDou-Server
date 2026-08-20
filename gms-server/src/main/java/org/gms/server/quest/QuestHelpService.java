@@ -841,7 +841,15 @@ public final class QuestHelpService {
         if (accountId <= 0 || mobId <= 0 || isBoss) {
             return;
         }
-        accountMobKillsCache.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>()).merge(mobId, 1L, Long::sum);
+        accountMobKillsCache.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>())
+                .compute(mobId, (id, currentVal) -> {
+                    if (currentVal == null) {
+                        long dbCount = loadAccountMobKillFromDb(accountId, id);
+                        return dbCount + 1L;
+                    }
+                    return currentVal + 1L;
+                });
+
         dbExecutor.submit(() -> {
             try (Connection con = DatabaseConnection.getConnection();
                  PreparedStatement ps = con.prepareStatement(
@@ -896,11 +904,7 @@ public final class QuestHelpService {
         return totalKills;
     }
 
-    private long getDirectAccountMobKills(int accountId, int mobId) {
-        Map<Integer, Long> map = accountMobKillsCache.get(accountId);
-        if (map != null && map.containsKey(mobId)) {
-            return map.get(mobId);
-        }
+    private long loadAccountMobKillFromDb(int accountId, int mobId) {
         long count = 0L;
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(
@@ -913,10 +917,14 @@ public final class QuestHelpService {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to get account mob kills for acc: {}, mob: {}", accountId, mobId, e);
+            log.warn("Failed to load account mob kills from db for acc: {}, mob: {}", accountId, mobId, e);
         }
-        accountMobKillsCache.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>()).put(mobId, count);
         return count;
+    }
+
+    private long getDirectAccountMobKills(int accountId, int mobId) {
+        return accountMobKillsCache.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(mobId, id -> loadAccountMobKillFromDb(accountId, id));
     }
 
     /**
