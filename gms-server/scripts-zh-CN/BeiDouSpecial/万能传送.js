@@ -125,7 +125,7 @@ function levelStart() {
     text += "#L1#练级地图#l\r\n";
     text += "#L2#城镇地图#l\r\n";
     text += "#L3#活动跳跳坐牢地图#l\r\n\r\n";
-    text += "#L9999##b[返回昨日小睡主菜单]#k#l\r\n";
+    text += "#L9999##b[返回枫叶助手主菜单]#k#l\r\n";
     cm.sendSelectLevel(text);
 }
 

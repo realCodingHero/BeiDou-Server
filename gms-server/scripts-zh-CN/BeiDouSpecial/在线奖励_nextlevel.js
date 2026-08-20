@@ -137,7 +137,7 @@ function levelmain() {
 	text += `#e今日已累积在线：#n${formatMinutes(g_OnlineMinutes)}\r\n`;
 	text += "我们为您准备了丰厚的在线时长奖励，点击领取下方的奖励：\r\n";
 	text += getOnlineRewardListText() + "\r\n\r\n";
-	text += "#L9999##b[返回昨日小睡主菜单]#k#l\r\n";
+	text += "#L9999##b[返回枫叶助手主菜单]#k#l\r\n";
 	text += "\r\n【领取说明】\r\n · 每份奖励需手动领取\r\n · #b每日0点#e#r重置#b#n累计时长#k\r\n · 背包空间不足将不会发放奖励\r\n · 坚持在线时间越长，获得奖励越丰厚！";
 	cm.sendNextSelectLevel("claimrewards",text);
 }
