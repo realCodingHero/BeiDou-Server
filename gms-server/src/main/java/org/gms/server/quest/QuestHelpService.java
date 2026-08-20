@@ -1407,7 +1407,7 @@ public final class QuestHelpService {
             wholePrice = 1;
         }
 
-        int minMobLevel = Integer.MAX_VALUE;
+        int bestMobLevel = 10;
         int bestChance = 500000;
         boolean foundMob = false;
 
@@ -1421,6 +1421,7 @@ public final class QuestHelpService {
             for (DropMobInfo mob : dropMobs) {
                 if (!mob.isBoss()) {
                     int mobId = mob.getMobId();
+                    int chance = mob.getChance();
                     int mobLevel = 10;
                     try {
                         mobLevel = LifeFactory.getMonsterLevel(mobId);
@@ -1429,32 +1430,22 @@ public final class QuestHelpService {
                     if (mobLevel <= 0) {
                         mobLevel = 10;
                     }
-                    int chance = Math.max(1, mob.getChance());
-
-                    if (!foundMob || mobLevel < minMobLevel) {
-                        minMobLevel = mobLevel;
-                        bestChance = chance;
+                    if (!foundMob || chance > bestChance) {
+                        bestChance = Math.max(1, chance);
+                        bestMobLevel = Math.max(1, mobLevel);
                         foundMob = true;
-                    } else if (mobLevel == minMobLevel) {
-                        if (chance > bestChance) {
-                            bestChance = chance;
-                        }
                     }
                 }
             }
         }
 
-        if (!foundMob) {
-            minMobLevel = 10;
-        }
-
-        double basePrice = (wholePrice * 15.0) + (minMobLevel * 25.0);
+        double basePrice = (wholePrice * 20.0) + (bestMobLevel * 30.0);
         double ratio = 500000.0 / bestChance;
-        double rarityFactor = Math.pow(ratio, 0.85);
-        if (rarityFactor < 0.4) {
-            rarityFactor = 0.4;
-        } else if (rarityFactor > 8.0) {
-            rarityFactor = 8.0;
+        double rarityFactor = Math.pow(ratio, 0.90);
+        if (rarityFactor < 0.75) {
+            rarityFactor = 0.75;
+        } else if (rarityFactor > 10.0) {
+            rarityFactor = 10.0;
         }
 
         int unitPrice = (int) Math.round(basePrice * rarityFactor);
@@ -1659,7 +1650,7 @@ public final class QuestHelpService {
         }
 
         int unitPrice = isRegular ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
-        long totalCost = calculateTieredCost(unitPrice, neededCount);
+        long totalCost = isExclusive ? calculateTieredCost(unitPrice, neededCount) : ((long) unitPrice * neededCount);
         if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
             long avgPrice = neededCount > 0 ? Math.round((double) totalCost / neededCount) : unitPrice;
             return new DeliveryResult(false, "您的金币不足！购买 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + " 共需 #r" + totalCost + "#k 金币（" + neededCount + "个 * " + avgPrice + "金币/个 = " + totalCost + " 金币），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
@@ -1758,8 +1749,13 @@ public final class QuestHelpService {
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
-            int unitPrice = isPurchasableMaterial(itemId) ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
-            totalCost += calculateTieredCost(unitPrice, qty);
+            if (isPurchasableMaterial(itemId)) {
+                int unitPrice = getMaterialUnitPrice(itemId);
+                totalCost += (long) unitPrice * qty;
+            } else {
+                int unitPrice = getQuestExclusiveUnitPrice(itemId, questId);
+                totalCost += calculateTieredCost(unitPrice, qty);
+            }
         }
 
         if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
@@ -1790,8 +1786,9 @@ public final class QuestHelpService {
         for (Map.Entry<Integer, Integer> entry : toDeliver.entrySet()) {
             int itemId = entry.getKey();
             int qty = entry.getValue();
-            int unitPrice = isPurchasableMaterial(itemId) ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
-            long itemCost = calculateTieredCost(unitPrice, qty);
+            boolean isRegular = isPurchasableMaterial(itemId);
+            int unitPrice = isRegular ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
+            long itemCost = isRegular ? ((long) unitPrice * qty) : calculateTieredCost(unitPrice, qty);
             long avgPrice = qty > 0 ? Math.round((double) itemCost / qty) : unitPrice;
             org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助购买材料", -1);
             totalCount += qty;
@@ -2285,7 +2282,9 @@ public final class QuestHelpService {
             this.questExclusive = questExclusive;
             this.sampleUnlocked = sampleUnlocked;
             this.unitPrice = unitPrice;
-            this.totalPrice = calculateTieredCost(unitPrice, Math.max(0, requiredCount - currentCount));
+            this.totalPrice = questExclusive
+                    ? calculateTieredCost(unitPrice, Math.max(0, requiredCount - currentCount))
+                    : (long) unitPrice * Math.max(0, requiredCount - currentCount);
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
         }
 
