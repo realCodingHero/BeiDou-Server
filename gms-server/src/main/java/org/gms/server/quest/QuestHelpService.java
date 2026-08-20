@@ -569,16 +569,12 @@ public final class QuestHelpService {
     /**
      * 判定指定角色是否已解锁传送至目标地图的权限
      * 规则：
-     * 1. GM 角色全免，无限制；
-     * 2. 隐藏地图（或未绑定任何主城的孤立地图）：当且仅当玩家亲自访问过该地图自身；
-     * 3. 常规地图（野外地图 / 主城自身）：当且仅当玩家访问过该地图所属的主城。
+     * 1. 隐藏地图（或未绑定任何主城的孤立地图）：当且仅当玩家亲自访问过该地图自身；
+     * 2. 常规地图（野外地图 / 主城自身）：当且仅当玩家访问过该地图所属的主城。
      */
     public boolean isMapWarpUnlocked(Character player, int targetMapId) {
         if (player == null) {
             return false;
-        }
-        if (player.isGM()) {
-            return true;
         }
         if (player.getMapId() > 0) {
             recordMapVisited(player.getId(), player.getMapId());
