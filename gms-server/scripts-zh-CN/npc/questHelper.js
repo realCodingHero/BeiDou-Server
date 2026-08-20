@@ -375,15 +375,13 @@ function handleDetailSelection(selection) {
         var diff = item.getRequiredCount() - item.getCurrentCount();
 
         var tagHeader = item.isQuestExclusive() ? "【购买专属任务道具确认(样本已解锁)】" : "【购买补齐材料确认】";
-        var exclusiveTip = item.isQuestExclusive() ? " - 提示说明：#b专属任务道具已通过背包样本解锁（含专属溢价）#k\r\n" : "";
+        var avgPrice = diff > 0 ? Math.round(item.getTotalPrice() / diff) : item.getUnitPrice();
 
         var confirmText = "#e#b" + tagHeader + "#k#n\r\n\r\n"
             + "本次任务目标：\r\n"
-            + " - 收集道具：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 x " + diff + " 个\r\n"
-            + exclusiveTip
+            + " - 收集道具：#v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 x " + diff + " 个\r\n\r\n"
             + "本次购买补齐将消耗：\r\n"
-            + " - 道具单价：#r" + item.getUnitPrice() + "#k 金币\r\n"
-            + " - 所需金币：#r" + item.getTotalPrice() + "#k 金币\r\n"
+            + " - 所需金币：#r" + diff + "#k 个 * #r" + avgPrice + "#k 金币/个 = #r" + item.getTotalPrice() + "#k 金币\r\n"
             + " - 当前持有金币：#b" + cm.getPlayer().getMeso() + "#k 金币\r\n\r\n"
             + "#e是否确认支付金币并购买补齐？#n";
 

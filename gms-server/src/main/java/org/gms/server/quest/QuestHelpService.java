@@ -129,6 +129,7 @@ public final class QuestHelpService {
     private final Map<Integer, Boolean> questExclusiveCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> materialUnitPriceCache = new ConcurrentHashMap<>();
     private final Map<Long, Integer> questExclusiveUnitPriceCache = new ConcurrentHashMap<>();
+    private final Map<Integer, Integer> mobRepresentativeEtcPriceCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> nativeShopItemPrices = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> nativeShopItemNpcs = new ConcurrentHashMap<>();
     private final Map<Integer, Map<Integer, Long>> accountMobKillsCache = new ConcurrentHashMap<>();
@@ -876,13 +877,57 @@ public final class QuestHelpService {
     }
 
     /**
-     * 计算专属任务道具的单价（专属溢价模型）
+     * 获取怪物掉落的代表性普通杂物（400xxxx）的商店回收价（用于任务道具锚定估值）
+     */
+    public int getMobRepresentativeEtcPrice(int mobId) {
+        if (mobId <= 0) {
+            return 10;
+        }
+        return mobRepresentativeEtcPriceCache.computeIfAbsent(mobId, id -> {
+            int foundPrice = -1;
+            try (Connection con = DatabaseConnection.getConnection();
+                 PreparedStatement ps = con.prepareStatement(
+                         "SELECT itemid FROM drop_data WHERE dropperid = ? AND itemid >= 4000000 AND itemid < 4010000 AND questid = 0 LIMIT 20")) {
+                ps.setInt(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        int etcItemId = rs.getInt("itemid");
+                        int wholePrice = ItemInformationProvider.getInstance().getWholePrice(etcItemId);
+                        if (wholePrice > 0) {
+                            foundPrice = wholePrice;
+                            break;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (foundPrice > 0) {
+                return foundPrice;
+            }
+
+            // 若无掉落记录或单测环境，基于怪物等级估算常规回收价
+            int mobLevel = 10;
+            try {
+                mobLevel = LifeFactory.getMonsterLevel(id);
+            } catch (Throwable ignored) {
+            }
+            if (mobLevel <= 0) {
+                mobLevel = 10;
+            }
+            return Math.max(2, (int) Math.round(mobLevel * 1.0));
+        });
+    }
+
+    /**
+     * 计算专属任务道具的单价（锚定掉落怪物常规杂物价 * 150，结合掉率因子）
      */
     public int getQuestExclusiveUnitPrice(int itemId, int questId) {
         long cacheKey = ((long) questId << 32) | (itemId & 0xFFFFFFFFL);
         return questExclusiveUnitPriceCache.computeIfAbsent(cacheKey, key -> {
-            int bestMobLevel = 20;
+            int minMobLevel = Integer.MAX_VALUE;
             int bestChance = 50000;
+            int chosenMobId = 0;
             boolean foundMob = false;
 
             List<DropMobInfo> dropMobs = null;
@@ -892,48 +937,105 @@ public final class QuestHelpService {
             }
 
             if (dropMobs != null && !dropMobs.isEmpty()) {
+                // 筛选非 Boss 怪物，寻找等级最低的怪物
                 for (DropMobInfo mob : dropMobs) {
-                    int mobId = mob.getMobId();
-                    int chance = mob.getChance();
-                    int mobLevel = 20;
+                    if (!mob.isBoss()) {
+                        int mobId = mob.getMobId();
+                        int mobLevel = 20;
+                        try {
+                            mobLevel = LifeFactory.getMonsterLevel(mobId);
+                        } catch (Throwable ignored) {
+                        }
+                        if (mobLevel <= 0) {
+                            mobLevel = 20;
+                        }
+
+                        if (!foundMob || mobLevel < minMobLevel) {
+                            minMobLevel = mobLevel;
+                            bestChance = Math.max(1, mob.getChance());
+                            chosenMobId = mobId;
+                            foundMob = true;
+                        } else if (mobLevel == minMobLevel) {
+                            if (mob.getChance() > bestChance) {
+                                bestChance = Math.max(1, mob.getChance());
+                                chosenMobId = mobId;
+                            }
+                        }
+                    }
+                }
+            }
+
+            int mobEtcPrice;
+            if (foundMob && chosenMobId > 0) {
+                mobEtcPrice = getMobRepresentativeEtcPrice(chosenMobId);
+            } else {
+                int questMinLevel = 20;
+                if (questId > 0) {
                     try {
-                        mobLevel = LifeFactory.getMonsterLevel(mobId);
+                        Quest q = Quest.getInstance(questId);
+                        if (q != null && q.getMinLevel() > 0) {
+                            questMinLevel = q.getMinLevel();
+                        }
                     } catch (Throwable ignored) {
                     }
-                    if (mobLevel <= 0) {
-                        mobLevel = 20;
-                    }
-                    if (!foundMob || chance > bestChance) {
-                        bestChance = Math.max(1, chance);
-                        bestMobLevel = Math.max(1, mobLevel);
-                        foundMob = true;
-                    }
                 }
+                mobEtcPrice = Math.max(2, (int) Math.round(questMinLevel * 1.0));
+                bestChance = 200000; // 默认 20%
             }
 
-            if (!foundMob && questId > 0) {
-                try {
-                    Quest q = Quest.getInstance(questId);
-                    if (q != null && q.getMinLevel() > 0) {
-                        bestMobLevel = Math.max(20, q.getMinLevel());
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-
-            double basePrice = 2000.0 + (bestMobLevel * 100.0);
+            double basePrice = mobEtcPrice * 150.0;
             double ratio = 500000.0 / bestChance;
-            double rarityFactor = Math.pow(ratio, 0.90);
-            if (rarityFactor < 1.0) {
-                rarityFactor = 1.0;
-            } else if (rarityFactor > 10.0) {
-                rarityFactor = 10.0;
+            double rarityFactor = Math.pow(ratio, 0.85);
+            if (rarityFactor < 0.4) {
+                rarityFactor = 0.4;
+            } else if (rarityFactor > 8.0) {
+                rarityFactor = 8.0;
             }
 
-            double premiumMultiplier = 3.5;
-            int unitPrice = (int) Math.round(basePrice * rarityFactor * premiumMultiplier);
-            return Math.max(5000, unitPrice);
+            int unitPrice = (int) Math.round(basePrice * rarityFactor);
+            return Math.max(100, unitPrice);
         });
+    }
+
+    /**
+     * 分段累进阶梯总价计算（买越少越便宜，买全额重惩罚）
+     * 阶梯 1 (1~10个): 1.0x 基准价
+     * 阶梯 2 (11~30个): 1.6x 单价
+     * 阶梯 3 (31~60个): 2.5x 单价
+     * 阶梯 4 (61个以上): 4.0x 单价
+     */
+    public static long calculateTieredCost(int baseUnitPrice, int count) {
+        if (count <= 0 || baseUnitPrice <= 0) {
+            return 0L;
+        }
+        long total = 0L;
+        int remaining = count;
+
+        // 阶梯 1: 1 ~ 10 个 (1.0x 基准价)
+        int tier1 = Math.min(remaining, 10);
+        total += (long) tier1 * baseUnitPrice;
+        remaining -= tier1;
+
+        // 阶梯 2: 11 ~ 30 个 (1.6x 适度递增)
+        if (remaining > 0) {
+            int tier2 = Math.min(remaining, 20);
+            total += (long) tier2 * Math.round(baseUnitPrice * 1.6);
+            remaining -= tier2;
+        }
+
+        // 阶梯 3: 31 ~ 60 个 (2.5x 显著递增)
+        if (remaining > 0) {
+            int tier3 = Math.min(remaining, 30);
+            total += (long) tier3 * Math.round(baseUnitPrice * 2.5);
+            remaining -= tier3;
+        }
+
+        // 阶梯 4: 61 个及以上 (4.0x 高额惩罚)
+        if (remaining > 0) {
+            total += (long) remaining * Math.round(baseUnitPrice * 4.0);
+        }
+
+        return total;
     }
 
     /**
@@ -1305,36 +1407,54 @@ public final class QuestHelpService {
             wholePrice = 1;
         }
 
-        int bestMobLevel = 10;
+        int minMobLevel = Integer.MAX_VALUE;
         int bestChance = 500000;
         boolean foundMob = false;
 
-        List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
+        List<DropMobInfo> dropMobs = null;
+        try {
+            dropMobs = getDropMobsForItem(itemId);
+        } catch (Throwable ignored) {
+        }
+
         if (dropMobs != null && !dropMobs.isEmpty()) {
             for (DropMobInfo mob : dropMobs) {
                 if (!mob.isBoss()) {
                     int mobId = mob.getMobId();
-                    int chance = mob.getChance();
-                    int mobLevel = LifeFactory.getMonsterLevel(mobId);
+                    int mobLevel = 10;
+                    try {
+                        mobLevel = LifeFactory.getMonsterLevel(mobId);
+                    } catch (Throwable ignored) {
+                    }
                     if (mobLevel <= 0) {
                         mobLevel = 10;
                     }
-                    if (!foundMob || chance > bestChance) {
-                        bestChance = Math.max(1, chance);
-                        bestMobLevel = Math.max(1, mobLevel);
+                    int chance = Math.max(1, mob.getChance());
+
+                    if (!foundMob || mobLevel < minMobLevel) {
+                        minMobLevel = mobLevel;
+                        bestChance = chance;
                         foundMob = true;
+                    } else if (mobLevel == minMobLevel) {
+                        if (chance > bestChance) {
+                            bestChance = chance;
+                        }
                     }
                 }
             }
         }
 
-        double basePrice = (wholePrice * 20.0) + (bestMobLevel * 30.0);
+        if (!foundMob) {
+            minMobLevel = 10;
+        }
+
+        double basePrice = (wholePrice * 15.0) + (minMobLevel * 25.0);
         double ratio = 500000.0 / bestChance;
-        double rarityFactor = Math.pow(ratio, 0.90);
-        if (rarityFactor < 0.75) {
-            rarityFactor = 0.75;
-        } else if (rarityFactor > 10.0) {
-            rarityFactor = 10.0;
+        double rarityFactor = Math.pow(ratio, 0.85);
+        if (rarityFactor < 0.4) {
+            rarityFactor = 0.4;
+        } else if (rarityFactor > 8.0) {
+            rarityFactor = 8.0;
         }
 
         int unitPrice = (int) Math.round(basePrice * rarityFactor);
@@ -1539,9 +1659,10 @@ public final class QuestHelpService {
         }
 
         int unitPrice = isRegular ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
-        long totalCost = (long) unitPrice * neededCount;
+        long totalCost = calculateTieredCost(unitPrice, neededCount);
         if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
-            return new DeliveryResult(false, "您的金币不足！购买 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + " 共需 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
+            long avgPrice = neededCount > 0 ? Math.round((double) totalCost / neededCount) : unitPrice;
+            return new DeliveryResult(false, "您的金币不足！购买 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + " 共需 #r" + totalCost + "#k 金币（" + neededCount + "个 * " + avgPrice + "金币/个 = " + totalCost + " 金币），您当前仅有 #b" + player.getMeso() + "#k 金币。", 0);
         }
 
         if (!org.gms.client.inventory.manipulator.InventoryManipulator.checkSpace(player.getClient(), itemId, neededCount, "")) {
@@ -1556,7 +1677,8 @@ public final class QuestHelpService {
             return new DeliveryResult(false, "发放道具失败，已退还金币，请检查背包空间后重试。", 0);
         }
 
-        return new DeliveryResult(true, "已扣除 #r" + totalCost + "#k 金币（单价: " + unitPrice + " 金币），成功为您购买补齐 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + "！", neededCount);
+        long avgPrice = neededCount > 0 ? Math.round((double) totalCost / neededCount) : unitPrice;
+        return new DeliveryResult(true, "已扣除 #r" + totalCost + "#k 金币（" + neededCount + "个 * " + avgPrice + "金币/个 = " + totalCost + " 金币），成功为您购买补齐 #v" + itemId + "# 【#b" + getItemName(itemId) + "#k】 x" + neededCount + "！", neededCount);
     }
 
     public DeliveryResult deliverAllRegularMaterials(Character player, int questId) {
@@ -1637,7 +1759,7 @@ public final class QuestHelpService {
             int itemId = entry.getKey();
             int qty = entry.getValue();
             int unitPrice = isPurchasableMaterial(itemId) ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
-            totalCost += (long) unitPrice * qty;
+            totalCost += calculateTieredCost(unitPrice, qty);
         }
 
         if (totalCost > Integer.MAX_VALUE || player.getMeso() < totalCost) {
@@ -1669,11 +1791,12 @@ public final class QuestHelpService {
             int itemId = entry.getKey();
             int qty = entry.getValue();
             int unitPrice = isPurchasableMaterial(itemId) ? getMaterialUnitPrice(itemId) : getQuestExclusiveUnitPrice(itemId, questId);
-            long itemCost = (long) unitPrice * qty;
+            long itemCost = calculateTieredCost(unitPrice, qty);
+            long avgPrice = qty > 0 ? Math.round((double) itemCost / qty) : unitPrice;
             org.gms.client.inventory.manipulator.InventoryManipulator.addById(player.getClient(), itemId, (short) qty, "任务辅助购买材料", -1);
             totalCount += qty;
             sb.append("#v").append(itemId).append("# 【#b").append(getItemName(itemId)).append("#k】 x").append(qty)
-              .append(" (单价: ").append(unitPrice).append(" 金币, 小计: ").append(itemCost).append(" 金币)\r\n");
+              .append(" (").append(qty).append("个 * ").append(avgPrice).append("金币/个 = ").append(itemCost).append(" 金币)\r\n");
         }
 
         if (lockedExclusiveItemTypes > 0) {
@@ -2162,7 +2285,7 @@ public final class QuestHelpService {
             this.questExclusive = questExclusive;
             this.sampleUnlocked = sampleUnlocked;
             this.unitPrice = unitPrice;
-            this.totalPrice = (long) unitPrice * Math.max(0, requiredCount - currentCount);
+            this.totalPrice = calculateTieredCost(unitPrice, Math.max(0, requiredCount - currentCount));
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
         }
 
