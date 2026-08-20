@@ -2045,8 +2045,30 @@ public class Character extends AbstractCharacterObject {
                 final Packet pickupPacket = PacketCreator.removeItemFromMap(mapitem.getObjectId(), (isPet) ? 5 : 2, this.getId(), isPet, petIndex);
 
                 Item mItem = mapitem.getItem();
-                boolean hasSpaceInventory = true;
                 ItemInformationProvider ii = ItemInformationProvider.getInstance();
+
+                // 宠物其他栏杂物过滤与自动出售逻辑
+                if (isPet && mItem != null && mapitem.getMeso() == 0 && mapitem.getQuest() <= 0 && ItemConstants.isEtcTrashItem(mItem.getItemId()) && !ii.isQuestItem(mItem.getItemId())) {
+                    int lootMode = getPetEtcLootMode();
+                    if (lootMode == 1) { // 模式1：忽略模式（跳过不捡）
+                        enableActions();
+                        return;
+                    } else if (lootMode == 2) { // 模式2：自动折算金币（不占背包）
+                        int unitPrice = ii.getWholePrice(mItem.getItemId());
+                        if (unitPrice < 0) {
+                            unitPrice = 0;
+                        }
+                        int totalMeso = unitPrice * mItem.getQuantity();
+                        if (totalMeso > 0) {
+                            this.gainMeso(totalMeso, false, false, false);
+                        }
+                        this.getMap().pickItemDrop(pickupPacket, mapitem);
+                        enableActions();
+                        return;
+                    }
+                }
+
+                boolean hasSpaceInventory = true;
                 if (ItemId.isNxCard(mapitem.getItemId()) || mapitem.getMeso() > 0 || ii.isConsumeOnPickup(mapitem.getItemId()) || (hasSpaceInventory = InventoryManipulator.checkSpace(client, mapitem.getItemId(), mItem.getQuantity(), mItem.getOwner()))) {
                     int mapId = this.getMapId();
 
@@ -6096,6 +6118,38 @@ public class Character extends AbstractCharacterObject {
         this.expRate /= worldz.getExpRate();
         this.mesoRate /= worldz.getMesoRate();
         this.dropRate /= worldz.getDropRate();
+    }
+
+    private Integer petEtcLootMode = null;
+
+    public int getPetEtcLootMode() {
+        if (petEtcLootMode == null) {
+            ExtendValueDO extendValueDO = ExtendUtil.getExtendValue(
+                    String.valueOf(id),
+                    ExtendType.CHARACTER_EXTEND.getType(),
+                    "PET_ETC_LOOT_MODE"
+            );
+            if (extendValueDO == null || extendValueDO.getExtendValue() == null || extendValueDO.getExtendValue().isBlank()) {
+                petEtcLootMode = 0;
+            } else {
+                try {
+                    petEtcLootMode = Integer.parseInt(extendValueDO.getExtendValue());
+                } catch (Exception e) {
+                    petEtcLootMode = 0;
+                }
+            }
+        }
+        return petEtcLootMode;
+    }
+
+    public void setPetEtcLootMode(int mode) {
+        this.petEtcLootMode = mode;
+        ExtendUtil.saveOrUpdateExtendValue(
+                String.valueOf(id),
+                ExtendType.CHARACTER_EXTEND.getType(),
+                "PET_ETC_LOOT_MODE",
+                String.valueOf(mode)
+        );
     }
 
     private void applySavedRateOrElse(String type, Runnable runnable) {

@@ -78,6 +78,13 @@ public final class PetLootHandler extends AbstractPacketHandler {
                     return;
                 }
 
+                if (chr.getPetEtcLootMode() == 1) {
+                    if (mapitem.getItem() != null && mapitem.getQuest() <= 0 && org.gms.constants.inventory.ItemConstants.isEtcTrashItem(mapitem.getItem().getItemId())) {
+                        c.sendPacket(PacketCreator.enableActions());
+                        return;
+                    }
+                }
+
                 if (chr.isEquippedPetItemIgnore(petIndex)) {
                     final Set<Integer> petIgnore = chr.getExcludedItems();
                     if (!petIgnore.isEmpty() && petIgnore.contains(mapitem.getItem().getItemId())) {

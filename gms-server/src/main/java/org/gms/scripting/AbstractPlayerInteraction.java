@@ -1258,6 +1258,14 @@ public class AbstractPlayerInteraction {
      * @param extendName 扩展字段名
      * @return 扩展字段值
      */
+    public int getPetEtcLootMode() {
+        return getPlayer().getPetEtcLootMode();
+    }
+
+    public void setPetEtcLootMode(int mode) {
+        getPlayer().setPetEtcLootMode(mode);
+    }
+
     public String getCharacterExtendValue(String extendName) {
         ExtendValueDO extendValueDO = ExtendUtil.getExtendValue(String.valueOf(getPlayer().getId()), ExtendType.CHARACTER_EXTEND.getType(), extendName);
         return extendValueDO == null ? null : extendValueDO.getExtendValue();

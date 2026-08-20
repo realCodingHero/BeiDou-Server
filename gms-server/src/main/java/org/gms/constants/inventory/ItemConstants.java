@@ -368,4 +368,31 @@ public final class ItemConstants {
     public static boolean isValidPetIndex(byte petIndex) {
         return petIndex >= 0 && petIndex < 3;
     }
+
+    /**
+     * 判断是否为其他栏的普通怪物掉落杂物（用于宠物忽略拾取或自动出售换金币）
+     * 豁免保护：任务道具(403xxxx/quest=1)、矿石母矿(401/402)、特殊结晶(4004/4005)、魔法石/召唤石/特殊卷轴材料(4006)等
+     */
+    public static boolean isEtcTrashItem(int itemId) {
+        if (itemId < 4000000 || itemId >= 5000000) {
+            return false;
+        }
+        // 排除任务道具 (403xxxx)
+        if (itemId / 10000 == 403) {
+            return false;
+        }
+        // 排除矿石母矿与宝石 (401xxxx, 402xxxx)
+        if (itemId / 10000 == 401 || itemId / 10000 == 402) {
+            return false;
+        }
+        // 排除特殊结晶/水晶母矿 (4004xxx, 4005xxx)
+        if (itemId / 1000 == 4004 || itemId / 1000 == 4005) {
+            return false;
+        }
+        // 排除魔法石/召唤石/特殊卷轴材料 (4006xxx)
+        if (itemId / 1000 == 4006) {
+            return false;
+        }
+        return true;
+    }
 }
