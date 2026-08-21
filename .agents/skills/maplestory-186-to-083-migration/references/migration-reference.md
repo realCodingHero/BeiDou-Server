@@ -38,6 +38,7 @@ Common v186-to-v083 mappings are:
 | v186 source | v083 client target | Notes |
 |---|---|---|
 | `Character.wz/<Category>/<id>.img` | `Data/Character/<Category>/0<id>.img` | Usually zero-padded; preserve the target category. |
+| `Character.wz/Weapon/<id>.img` | `Data/Character/Weapon/0<id>.img` | Universal cash weapons (`170xxxx`) require `patch-universal-weapon` UOL expansion. |
 | `Effect.wz/ItemEff.img` | `Data/Effect/ItemEff.img` | Native item/cape/ring effect roots; old client needs code support. |
 | `Effect.wz/SetEff.img` | `Data/Effect/SetEff.img` | Merge referenced roots if ItemEff uses external links. |
 | `Effect.wz/CharacterEff.img` | `Data/Effect/CharacterEff.img` | Legacy effect path; do not assume its z semantics match v186. |
@@ -52,7 +53,8 @@ The item ID alone is not sufficient. Validate the WZ node, server item template,
 2. Build an explicit manifest of top-level nodes. Use `replace` only for selected nodes and keep the rest of the target image unchanged.
 3. Keep canvases, origins, delays, UOLs, outlinks, z, pos, fixed, action, and animate fields unless there is a documented target-compatibility reason to transform them.
 4. If a canvas links to `Effect/SetEff.img/<n>` or another external image, either flatten it while the source external image is loaded or merge the referenced node into the target. A preserved link to a missing target image produces an invisible effect.
-5. Verify the serialized result by parsing it again. Do not treat a successful serializer exit as proof that the client can render it.
+5. For universal cash weapons (`170xxxx`), expand missing weapon types (`31..48`, etc.) into `../30/<action>` UOL links; v083 will block equip if numeric weapon directories are missing.
+6. Verify the serialized result by parsing it again. Do not treat a successful serializer exit as proof that the client can render it.
 
 The workbench used a custom `WzBridge` with these useful operations:
 
@@ -62,6 +64,7 @@ export-xml <file.img> <destination.xml>
 merge-img-top <base.img> <source.img> <names.json> <destination.img>
 replace-img-top <base.img> <source.img> <names.json> <destination.img>
 replace-img-top ... --preserve-links
+patch-universal-weapon <source.img> <destination.img>
 remove-legacy-effect-info <source.img> <destination.img>
 remove-legacy-effect-info-tree <source-root> <manifest.json> <destination-root>
 ```
@@ -153,10 +156,31 @@ When a client crashes:
 | Crash several seconds after login | Persistent effect, action update, or relog-loaded resource | Test with the item unequipped and inspect the dump/timing. |
 | Cape renders in front | Legacy CharacterEff path, not just wrong z value | Use native ItemEff loading and remove the duplicate legacy reference after validation. |
 | ItemEff data exists but has no effect | v083 client has no ItemEff loader or branch path is missing | Confirm the compatibility module is loaded and the action/default branch exists. |
+| Cash weapon says universal but cannot equip | Missing weapon type subdirectories (`31..48`) in WZ | Run `WzBridge patch-universal-weapon` to generate UOL mappings to `30`. |
 | GM item works but shop item is absent | Missing/filtered cash-shop row | Check SN, price, category, sale flag, period, and database row. |
 | English or blank item name | String resource not imported or wrong client layer | Compare String.wz and target `Data`/`EN` mapping. |
 
 Prioritize database/character repair when the server cannot build equip stats. Prioritize client resource/code repair when the server successfully sends the item but the client renders, equips, or opens inventory incorrectly.
+
+## Universal Cash Weapons (170xxxx)
+
+In v186+, universal cash weapons (`170xxxx`) rely on the engine's `_LinkCashWeaponData` mechanism to resolve weapon compatibility dynamically at runtime. As a result, the source WZ image typically only contains:
+- `30` (1-handed / baseline motions)
+- `49` (gun motions)
+
+The v083 client (`CItemInfo::IsEquipable`) does not have this dynamic fallback. It directly checks for the child property corresponding to the equipped weapon's type code (`WT = (itemId / 10000) % 100`):
+- `30`: 1H Sword, `31`: 1H Axe, `32`: 1H Mace, `33`: Dagger, `36`: Cane, `37`: Wand, `38`: Staff
+- `40`: 2H Sword, `41`: 2H Axe, `42`: 2H Mace, `43`: Spear, `44`: Polearm, `45`: Bow, `46`: Crossbow, `47`: Claw, `48`: Knuckle, `49`: Gun
+- Modern extensions: `21..28`, `52..59`
+
+If any of these numeric directories is absent from the `.img`, the v083 client refuses to equip the cash weapon when the character wields that weapon type.
+
+### Patching procedure:
+Use `WzBridge patch-universal-weapon <source.img> <destination.img>`. The command:
+1. inspects `30` to enumerate all defined actions (`walk1..2`, `stand1..2`, `swing*`, `stab*`, `shoot*`, `prone*`, `heal`, `fly`, `jump`, `sit`, `ladder`, `rope`);
+2. adds all missing weapon type subdirectories (`31..48`, etc.) populated with `<uol name="<action>" value="../30/<action>" />`;
+3. checks `49` and injects fallback UOLs for any actions missing from `49` (such as ladder, rope, sit, heal, etc.);
+4. serializes the result into a clean GMS-compatible `.img`.
 
 ## Shop and database cautions
 
