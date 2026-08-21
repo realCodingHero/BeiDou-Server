@@ -840,6 +840,7 @@ public final class QuestHelpService {
     /**
      * 判断道具是否为专属任务道具（例如 403xxxx、标记为 quest/notSale/tradeBlock 等），
      * 仅当玩家背包中已有至少 1 个样品时才允许购买补齐。
+     * 严格限制：必须存在普通野外怪物掉落（纯 Boss 掉落、仅通过敲箱子/反应堆或任务脚本给予的道具严禁购买）。
      * 严格排除：装备(1xxxxxx)、商城道具(5xxxxxx)。
      */
     public boolean isQuestExclusiveItem(int itemId) {
@@ -849,6 +850,28 @@ public final class QuestHelpService {
                 return false;
             }
             if (isRegularMonsterMaterial(id) || isNativeShopItem(id)) {
+                return false;
+            }
+
+            // 严格检查掉落来源：必须存在非 Boss 的普通野外怪物掉落
+            // 若该道具无任何怪物掉落（如敲箱子反应堆、任务剧情直接给予等），则不可购买
+            List<DropMobInfo> dropMobs = getDropMobsForItem(id);
+            if (dropMobs == null || dropMobs.isEmpty()) {
+                return false;
+            }
+
+            MonsterInformationProvider mip = MonsterInformationProvider.getInstance();
+            boolean hasRegularMob = false;
+            for (DropMobInfo mob : dropMobs) {
+                int mobId = mob.getMobId();
+                if (mobId > 0 && !mip.isBoss(mobId)) {
+                    if (mob.getMaps() != null && !mob.getMaps().isEmpty()) {
+                        hasRegularMob = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasRegularMob) {
                 return false;
             }
 
@@ -1622,6 +1645,10 @@ public final class QuestHelpService {
         boolean isRegular = isPurchasableMaterial(itemId);
         boolean isExclusive = isQuestExclusiveItem(itemId);
         if (!isRegular && !isExclusive) {
+            List<DropMobInfo> dropMobs = getDropMobsForItem(itemId);
+            if (dropMobs == null || dropMobs.isEmpty()) {
+                return new DeliveryResult(false, "道具 【#b" + getItemName(itemId) + "#k】 无怪物掉落，不可购买！", 0);
+            }
             return new DeliveryResult(false, "该道具属于特殊/剧情/Boss掉落道具，不支持快捷购买，请在游戏中探索获取！", 0);
         }
 

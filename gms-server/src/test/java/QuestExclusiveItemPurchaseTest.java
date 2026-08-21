@@ -62,6 +62,16 @@ public class QuestExclusiveItemPurchaseTest {
         );
         assertTrue(completedItem.isCompleted());
         assertEquals(0L, completedItem.getTotalPrice());
+
+        // 场景 5：无怪物掉落道具（例如仅通过敲箱子反应堆掉落的 4031092 机器配件） -> 严禁购买，无论是否持有样本
+        QuestHelpService.ItemObjective reactorOnlyItem = new QuestHelpService.ItemObjective(
+                4031092, "机器配件", 1, 10, false, false, false, false, 0, java.util.Collections.emptyList()
+        );
+        assertFalse(reactorOnlyItem.isQuestExclusive());
+        assertFalse(reactorOnlyItem.isSampleUnlocked());
+        assertFalse(reactorOnlyItem.isDeliverable());
+        assertEquals(0L, reactorOnlyItem.getTotalPrice());
+        assertTrue(reactorOnlyItem.getDropMobs().isEmpty());
     }
 
     @Test
