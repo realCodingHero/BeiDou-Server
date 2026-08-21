@@ -1228,6 +1228,9 @@ public final class QuestHelpService {
                     currentCount = player.getInventory(iType).countById(itemId);
                 }
                 if (currentCount < reqCount) {
+                    if (reqCount <= 1) {
+                        return false;
+                    }
                     boolean deliverableItem = isPurchasableMaterial(itemId) || (isQuestExclusiveItem(itemId) && currentCount >= 1);
                     if (!deliverableItem) {
                         return false; // 有未达成的不可购买道具
@@ -1389,7 +1392,10 @@ public final class QuestHelpService {
 
             boolean deliverable;
             int unitPrice;
-            if (isRegular) {
+            if (reqCount <= 1) {
+                deliverable = false;
+                unitPrice = 0;
+            } else if (isRegular) {
                 deliverable = true;
                 unitPrice = getMaterialUnitPrice(itemId);
             } else if (isExclusive) {
@@ -1642,6 +1648,9 @@ public final class QuestHelpService {
         if (reqCount == null || reqCount <= 0) {
             return new DeliveryResult(false, "该任务不需要此道具。", 0);
         }
+        if (reqCount <= 1) {
+            return new DeliveryResult(false, "该任务仅需 1 个此道具，不支持快捷购买，请在游戏中探索获取！", 0);
+        }
         boolean isRegular = isPurchasableMaterial(itemId);
         boolean isExclusive = isQuestExclusiveItem(itemId);
         if (!isRegular && !isExclusive) {
@@ -1725,6 +1734,10 @@ public final class QuestHelpService {
         for (Map.Entry<Integer, Integer> entry : reqItems.entrySet()) {
             int itemId = entry.getKey();
             int req = entry.getValue();
+            if (req <= 1) {
+                restrictedItemTypes++;
+                continue;
+            }
             boolean isRegular = isPurchasableMaterial(itemId);
             boolean isExclusive = isQuestExclusiveItem(itemId);
             InventoryType iType = ItemConstants.getInventoryType(itemId);
@@ -2304,14 +2317,19 @@ public final class QuestHelpService {
             this.itemName = itemName;
             this.currentCount = currentCount;
             this.requiredCount = requiredCount;
-            this.deliverable = deliverable;
+            this.deliverable = (requiredCount > 1) && deliverable;
             this.nativeShopItem = nativeShopItem;
             this.questExclusive = questExclusive;
             this.sampleUnlocked = sampleUnlocked;
-            this.unitPrice = unitPrice;
-            this.totalPrice = questExclusive
-                    ? calculateTieredCost(unitPrice, Math.max(0, requiredCount - currentCount))
-                    : (long) unitPrice * Math.max(0, requiredCount - currentCount);
+            this.unitPrice = (requiredCount > 1) ? unitPrice : 0;
+            int needed = Math.max(0, requiredCount - currentCount);
+            if (requiredCount > 1 && needed > 0) {
+                this.totalPrice = questExclusive
+                        ? calculateTieredCost(unitPrice, needed)
+                        : (long) unitPrice * needed;
+            } else {
+                this.totalPrice = 0L;
+            }
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
         }
 

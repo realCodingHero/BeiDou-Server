@@ -274,18 +274,20 @@ function showQuestDetail(questId) {
                 text += " 收集 #v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 " + progTag + "\r\n\r\n";
             } else {
                 text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 (#r" + item.getCurrentCount() + "/" + item.getRequiredCount() + "#k) -> #d[掉落]#k#l\r\n";
-                if (item.isDeliverable()) {
-                    if (item.isQuestExclusive()) {
-                        text += "#L" + (250000 + i) + "#   └─ #d[★ 样本已解锁购买: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                if (item.getRequiredCount() > 1) {
+                    if (item.isDeliverable()) {
+                        if (item.isQuestExclusive()) {
+                            text += "#L" + (250000 + i) + "#   └─ #d[★ 样本已解锁购买: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                        } else {
+                            text += "#L" + (250000 + i) + "#   └─ #d[购买补齐: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                        }
+                    } else if (item.isQuestExclusive() && item.getCurrentCount() === 0) {
+                        text += "#L" + (200000 + i) + "#   └─ #r(专属任务道具: 需背包至少持有1个样本以解锁购买)#k#l\r\n";
+                    } else if (!item.getDropMobs() || item.getDropMobs().isEmpty()) {
+                        text += "#L" + (200000 + i) + "#   └─ #r[无怪物掉落,不可购买]#k#l\r\n";
                     } else {
-                        text += "#L" + (250000 + i) + "#   └─ #d[购买补齐: 缺 " + diff + "个 -> 消耗 " + item.getTotalPrice() + " 金币]#k#l\r\n";
+                        text += "#L" + (200000 + i) + "#   └─ #r(剧情/特殊道具需手动获取)#k#l\r\n";
                     }
-                } else if (item.isQuestExclusive() && item.getCurrentCount() === 0) {
-                    text += "#L" + (200000 + i) + "#   └─ #r(专属任务道具: 需背包至少持有1个样本以解锁购买)#k#l\r\n";
-                } else if (!item.getDropMobs() || item.getDropMobs().isEmpty()) {
-                    text += "#L" + (200000 + i) + "#   └─ #r[无怪物掉落,不可购买]#k#l\r\n";
-                } else {
-                    text += "#L" + (200000 + i) + "#   └─ #r(剧情/特殊道具需手动获取)#k#l\r\n";
                 }
                 text += "\r\n";
             }
