@@ -65,34 +65,7 @@ Do not leave a link to `SetEff.img`/another effect image that is absent from the
 
 For equipment appearance images, keep the target server/client naming convention and flatten links only when the old client cannot resolve them. Apply gender/unlimited-period changes deliberately and record them in the migration manifest; do not silently rewrite unrelated equipment attributes.
 
-### 4. Universal Cash Weapon (170xxxx) Compatibility
-
-v186 and modern MapleStory clients dynamically link all weapon types at runtime using engine-level fallback (`_LinkCashWeaponData`). Therefore, in v186 WZ data, universal cash weapons (`170xxxx`) typically contain only base motion nodes:
-- `30`: general 1-handed / universal motion baseline;
-- `49`: gun / ranged motion baseline.
-
-**The v083 Client Constraint & Structural Hierarchy**:
-1. **Explicit Weapon Type Directories**: The v083 client (`CItemInfo::IsEquipable` and `CAvatar::DrawWeapon`) strictly requires an explicit sub-directory for every equipped weapon type (`30, 31, 32, 33, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49` and modern types `21..28, 52..59`).
-2. **Frame-Level Leaf UOLs (Crucial Engine Detail)**: The v083 C++ client engine (`CWzProperty`) does **not** recursively resolve UOLs when traversing action or frame folders. If an action itself is a UOL (e.g. `<uol name="walk1" value="../30/walk1" />`), `pAction->GetProperty("0")` fails, causing `CItemInfo::IsEquipable` to conclude the weapon has no valid frames for that weapon type (e.g. Mage Wand `37`, Staff `38`, Claw `47`, Bow `45`) and block equipping.
-3. **Correct Structure**: Each weapon type must contain real action directories and frame directories (`0`, `1`, `2`...), with leaf-level UOLs pointing directly to the base canvases:
-   ```xml
-   <imgdir name="37">
-     <imgdir name="stand1">
-       <imgdir name="0">
-         <uol name="weapon" value="../../../30/stand1/0/weapon" />
-         <uol name="effect" value="../../../30/stand1/0/effect" />
-       </imgdir>
-     </imgdir>
-   </imgdir>
-   ```
-
-**Required Action**:
-For any universal cash weapon (`170xxxx`) migrated from v186:
-1. Run `WzBridge patch-universal-weapon <source.img> <destination.img>`.
-2. The tool automatically constructs full hierarchical action/frame directories and generates leaf-level UOL links `../../../30/<action>/<frame>/<part>` for all weapon types (`31..48`, `21..28`, `52..59`), ensuring 100% compatibility with `CItemInfo::IsEquipable` and `CAvatar`.
-3. Verify that the resulting `.img` can be parsed cleanly by the v083 client and exported to XML before deployment.
-
-### 5. Choose the correct effect path
+### 4. Choose the correct effect path
 
 This is the critical v186-to-v083 distinction:
 
@@ -103,7 +76,7 @@ This is the critical v186-to-v083 distinction:
 
 For the known BeiDou v083 executable, the validated native cape module is restricted to `110xxxx` capes. It stores per-avatar effect state, updates it on avatar modification and action changes, and uses the existing v083 `LoadLayer` path. Do not broaden it to rings or weapons without a separate test.
 
-### 6. Synchronize server and shop data
+### 5. Synchronize server and shop data
 
 Import server WZ/JSON/database data only after the client resource is valid. For a shop item, validate independently:
 
@@ -115,7 +88,7 @@ Import server WZ/JSON/database data only after the client resource is valid. For
 
 Do not deduplicate rows solely by item ID. Same-ID rows can intentionally differ by SN, price, quantity, period, promotion, or category. Remove only confirmed duplicate sale variants according to the requested pricing rule.
 
-### 7. Validate in research
+### 6. Validate in research
 
 Use a fresh client process after every DLL/resource change. Test the smallest representative set first, then expand:
 
@@ -126,7 +99,7 @@ Use a fresh client process after every DLL/resource change. Test the smallest re
 
 If the game crashes, classify the stage before changing anything: startup, channel selection, entering the map, opening inventory, preview, equip, attack, or relog. Inspect the client dump and the exact equipped item list; repair incompatible database/character data before changing code when the crash originates in server `getEquipStats` or an invalid equipped item.
 
-### 8. Deploy formal only after research passes
+### 7. Deploy formal only after research passes
 
 Before formal deployment:
 
