@@ -72,6 +72,14 @@ public class QuestExclusiveItemPurchaseTest {
         assertFalse(reactorOnlyItem.isDeliverable());
         assertEquals(0L, reactorOnlyItem.getTotalPrice());
         assertTrue(reactorOnlyItem.getDropMobs().isEmpty());
+
+        // 场景 6：仅要求 1 个的任务材料（例如任务 2017 艾温的玻璃鞋 4000014 需 1 个） -> 严禁购买
+        QuestHelpService.ItemObjective singleQuantityItem = new QuestHelpService.ItemObjective(
+                4000014, "玻璃鞋", 0, 1, true, false, false, false, 59600, null
+        );
+        assertFalse(singleQuantityItem.isDeliverable());
+        assertEquals(0, singleQuantityItem.getUnitPrice());
+        assertEquals(0L, singleQuantityItem.getTotalPrice());
     }
 
     @Test
