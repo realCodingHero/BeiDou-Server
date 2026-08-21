@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01004416.img">
+  <imgdir name="info">
+    <string name="islot" value="Cp" />
+    <string name="vslot" value="CpH1H3H4H5H6HfHbAe" />
+    <int name="reqJob" value="0" />
+    <int name="reqLevel" value="0" />
+    <int name="reqSTR" value="0" />
+    <int name="reqDEX" value="0" />
+    <int name="reqINT" value="0" />
+    <int name="reqLUK" value="0" />
+    <int name="cash" value="1" />
+    <int name="noMoveToLocker" value="1" />
+    <int name="cashForceCharmExp" value="0" />
+    <imgdir name="keywordEffect">
+      <imgdir name="0">
+        <int name="z" value="1" />
+        <string name="keyword" value="날아봐" />
+        <string name="sound" value="01002796_0" />
+      </imgdir>
+    </imgdir>
+    <int name="gender" value="2" />
+  </imgdir>
+  <imgdir name="backDefault"></imgdir>
+</imgdir>

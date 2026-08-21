@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01702925.img">
+    <imgdir name="info">
+        <string name="islot" value="Wp" />
+        <string name="vslot" value="Wp" />
+        <int name="reqJob" value="0" />
+        <int name="reqLevel" value="0" />
+        <int name="reqSTR" value="0" />
+        <int name="reqDEX" value="0" />
+        <int name="reqINT" value="0" />
+        <int name="reqLUK" value="0" />
+        <int name="incPAD" value="0" />
+        <int name="incMAD" value="0" />
+        <int name="cash" value="1" />
+        <int name="setItemID" value="764" />
+        <imgdir name="abilityTimeLimited">
+            <int name="incPAD" value="30" />
+            <int name="incMAD" value="30" />
+        </imgdir>
+    </imgdir>
+</imgdir>

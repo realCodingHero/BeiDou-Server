@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01114400.img">
+  <imgdir name="info">
+    <string name="islot" value="Ri" />
+    <string name="vslot" value="Ri" />
+    <int name="reqJob" value="0" />
+    <int name="reqLevel" value="0" />
+    <int name="reqSTR" value="0" />
+    <int name="reqDEX" value="0" />
+    <int name="reqINT" value="0" />
+    <int name="reqLUK" value="0" />
+    <int name="tuc" value="0" />
+    <int name="cash" value="1" />
+    <imgdir name="level">
+      <int name="fixLevel" value="1" />
+      <imgdir name="info">
+        <imgdir name="1" />
+      </imgdir>
+      <imgdir name="case">
+        <imgdir name="0">
+          <int name="prob" value="1" />
+          <imgdir name="1">
+            <string name="hs" value="h1" />
+            <imgdir name="EquipmentSkill">
+              <imgdir name="0">
+                <int name="id" value="80011492" />
+                <int name="level" value="1" />
+              </imgdir>
+            </imgdir>
+          </imgdir>
+        </imgdir>
+      </imgdir>
+    </imgdir>
+    <int name="gender" value="2" />
+  </imgdir>
+</imgdir>

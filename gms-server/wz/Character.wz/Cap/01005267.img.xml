@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01005267.img">
+  <imgdir name="info">
+    <string name="islot" value="Cp" />
+    <string name="vslot" value="CpH1H5" />
+    <int name="reqJob" value="0" />
+    <int name="reqLevel" value="0" />
+    <int name="reqSTR" value="0" />
+    <int name="reqDEX" value="0" />
+    <int name="reqINT" value="0" />
+    <int name="reqLUK" value="0" />
+    <int name="cash" value="1" />
+    <int name="noMoveToLocker" value="1" />
+    <imgdir name="effect">
+      <string name="path" value="Effect/CharacterEff.img/1005267" />
+      <int name="follow" value="1" />
+      <int name="left" value="-25" />
+      <int name="top" value="-35" />
+      <int name="right" value="40" />
+      <int name="bottom" value="-10" />
+      <int name="dx" value="0" />
+      <int name="dy" value="0" />
+      <int name="delay" value="1800" />
+      <int name="interval" value="900" />
+      <int name="genOnMove" value="0" />
+    </imgdir>
+    <int name="gender" value="2" />
+  </imgdir>
+  <imgdir name="backDefault"></imgdir>
+</imgdir>

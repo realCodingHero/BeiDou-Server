@@ -16,7 +16,6 @@
     <int name="VRLeft" value="-675"/>
     <int name="VRBottom" value="720"/>
     <int name="VRRight" value="942"/>
-    <string name="onUserEnter" value="mureung_quest_3841"/>
   </imgdir>
   <imgdir name="back">
     <imgdir name="0">

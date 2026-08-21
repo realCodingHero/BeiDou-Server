@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="00054206.img">
+    <imgdir name="info">
+        <string name="islot" value="Fc" />
+        <string name="vslot" value="Fc" />
+        <int name="cash" value="1" />
+        <imgdir name="default">
+            <uol name="face" value="../../blink/0/face" />
+        </imgdir>
+    </imgdir>
+</imgdir>

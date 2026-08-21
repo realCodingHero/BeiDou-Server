@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01005479.img">
+  <imgdir name="info">
+    <string name="islot" value="Cp" />
+    <string name="vslot" value="CpH1H5" />
+    <int name="reqJob" value="0" />
+    <int name="reqLevel" value="0" />
+    <int name="reqSTR" value="0" />
+    <int name="reqDEX" value="0" />
+    <int name="reqINT" value="0" />
+    <int name="reqLUK" value="0" />
+    <int name="cash" value="1" />
+    <int name="colorvar" value="1" />
+    <int name="gender" value="2" />
+  </imgdir>
+  <imgdir name="backDefault"></imgdir>
+</imgdir>
