@@ -282,6 +282,8 @@ function showQuestDetail(questId) {
                     }
                 } else if (item.isQuestExclusive() && item.getCurrentCount() === 0) {
                     text += "#L" + (200000 + i) + "#   └─ #r(专属任务道具: 需背包至少持有1个样本以解锁购买)#k#l\r\n";
+                } else if (!item.getDropMobs() || item.getDropMobs().isEmpty()) {
+                    text += "#L" + (200000 + i) + "#   └─ #r[无怪物掉落,不可购买]#k#l\r\n";
                 } else {
                     text += "#L" + (200000 + i) + "#   └─ #r(剧情/特殊道具需手动获取)#k#l\r\n";
                 }
