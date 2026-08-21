@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01005650.img">
+  <imgdir name="info">
+    <string name="islot" value="Cp" />
+    <string name="vslot" value="CpH5" />
+    <int name="reqJob" value="0" />
+    <int name="reqLevel" value="0" />
+    <int name="reqSTR" value="0" />
+    <int name="reqDEX" value="0" />
+    <int name="reqINT" value="0" />
+    <int name="reqLUK" value="0" />
+    <int name="cash" value="1" />
+    <imgdir name="daysFromRegister">
+      <imgdir name="number"></imgdir>
+      <int name="noFlip" value="1" />
+      <int name="width" value="13" />
+      <int name="relPosX" value="0" />
+      <int name="relPosY" value="-21" />
+      <int name="relPosZ" value="0" />
+    </imgdir>
+    <int name="BTSLabel" value="1" />
+    <int name="onlyCash" value="1" />
+    <int name="gender" value="2" />
+  </imgdir>
+  <imgdir name="backDefault"></imgdir>
+</imgdir>

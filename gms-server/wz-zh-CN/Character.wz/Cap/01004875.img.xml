@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01004875.img">
+  <imgdir name="info">
+    <string name="islot" value="Cp" />
+    <string name="vslot" value="CpHdH1H2H3H4H5H6HsHfHbAfAyAsAe" />
+    <int name="reqJob" value="0" />
+    <int name="reqLevel" value="0" />
+    <int name="reqSTR" value="0" />
+    <int name="reqDEX" value="0" />
+    <int name="reqINT" value="0" />
+    <int name="reqLUK" value="0" />
+    <int name="cash" value="1" />
+    <imgdir name="effect">
+      <string name="path" value="Effect/CharacterEff.img/1004875" />
+      <int name="follow" value="1" />
+      <int name="z" value="1" />
+      <int name="delay" value="1200" />
+      <int name="interval" value="960" />
+      <int name="left" value="0" />
+      <short name="right" value="0" />
+      <int name="top" value="0" />
+      <int name="bottom" value="0" />
+      <int name="effectFlip" value="1" />
+    </imgdir>
+    <int name="removeEar" value="1" />
+    <int name="gender" value="2" />
+  </imgdir>
+  <imgdir name="backDefault"></imgdir>
+</imgdir>

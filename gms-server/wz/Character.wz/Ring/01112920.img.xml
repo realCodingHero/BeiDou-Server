@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<imgdir name="01112920.img">
+  <imgdir name="info">
+    <string name="islot" value="Ri" />
+    <string name="vslot" value="Ri" />
+    <int name="incSTR" value="1" />
+    <int name="incINT" value="1" />
+    <int name="incDEX" value="1" />
+    <int name="incLUK" value="1" />
+    <int name="cash" value="1" />
+    <int name="gender" value="2" />
+  </imgdir>
+</imgdir>
