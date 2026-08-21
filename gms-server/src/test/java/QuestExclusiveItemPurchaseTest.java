@@ -126,4 +126,32 @@ public class QuestExclusiveItemPurchaseTest {
         // 10 * 832 + 20 * 1331 + 30 * 2080 + 25 * 3328 = 8320 + 26620 + 62400 + 83200 = 180540
         assertEquals(180540L, QuestHelpService.calculateTieredCost(expectedUnitPrice, 85));
     }
+
+    @Test
+    public void testDropReactorInfoAndItemObjective() {
+        QuestHelpService.MapLocation map1 = new QuestHelpService.MapLocation(101010000, "魔法密林南郊", "魔法密林");
+        QuestHelpService.DropReactorInfo dropReactor = new QuestHelpService.DropReactorInfo(
+                1012000, "魔法密林花草/植物", 3, "1/3", 2067, java.util.List.of(map1)
+        );
+
+        assertEquals(1012000, dropReactor.getReactorId());
+        assertEquals("魔法密林花草/植物", dropReactor.getReactorName());
+        assertEquals(3, dropReactor.getChance());
+        assertEquals("1/3", dropReactor.getChanceText());
+        assertEquals(2067, dropReactor.getQuestId());
+        assertEquals(1, dropReactor.getMaps().size());
+        assertEquals(101010000, dropReactor.getMaps().get(0).getMapId());
+
+        QuestHelpService.ItemObjective plantSample = new QuestHelpService.ItemObjective(
+                4031150, "植物样品", 0, 20, false, false, false, false, 0,
+                java.util.Collections.emptyList(), java.util.List.of(dropReactor)
+        );
+
+        assertEquals(4031150, plantSample.getItemId());
+        assertEquals("植物样品", plantSample.getItemName());
+        assertTrue(plantSample.getDropMobs().isEmpty());
+        assertFalse(plantSample.getDropReactors().isEmpty());
+        assertEquals(1, plantSample.getDropReactors().size());
+        assertEquals(1012000, plantSample.getDropReactors().get(0).getReactorId());
+    }
 }
