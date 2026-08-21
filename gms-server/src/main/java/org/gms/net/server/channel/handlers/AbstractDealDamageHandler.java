@@ -670,14 +670,15 @@ public abstract class AbstractDealDamageHandler extends AbstractPacketHandler {
         ret.ranged = ranged;
         ret.magic = magic;
 
-        detectionAttackInterval(chr, ret);
-
-
         if (ret.skill > 0) {
             ret.skilllevel = chr.getSkillLevel(ret.skill);
             if (ret.skilllevel == 0 && GameConstants.isPqSkillMap(chr.getMapId()) && GameConstants.isPqSkill(ret.skill)) {
                 ret.skilllevel = 1;
             }
+        }
+
+        if (ret.skill == 0 || ret.skilllevel > 0) {
+            detectionAttackInterval(chr, ret);
         }
 
         if (ret.skill == Evan.ICE_BREATH || ret.skill == Evan.FIRE_BREATH || ret.skill == FPArchMage.BIG_BANG || ret.skill == ILArchMage.BIG_BANG || ret.skill == Bishop.BIG_BANG || ret.skill == Gunslinger.GRENADE || ret.skill == Brawler.CORKSCREW_BLOW || ret.skill == ThunderBreaker.CORKSCREW_BLOW || ret.skill == NightWalker.POISON_BOMB) {
@@ -1344,26 +1345,33 @@ public abstract class AbstractDealDamageHandler extends AbstractPacketHandler {
         long interval = chr.getAttackInterval(skill, now);
         if (interval == Long.MAX_VALUE || interval < Character.MIN_INTERVAL) return;
 
-        String reason = "玩家" + chr.getName() + "地图ID：" + chr.getMapId()
-                + "攻击间隔: " + interval + "技能ID：" + skill;
-
         switch (chr.checkSkillWindow(skill, interval)) {
-            case STABLE_HACK:
+            case STABLE_HACK: {
+                String reason = buildAttackIntervalReason(chr, interval, skill);
                 AutobanFactory.ATTACK_INTERVAL.addPoint(chr.getAutoBanManager(), reason);
                 return;
-            case BURST:
+            }
+            case BURST: {
+                String reason = buildAttackIntervalReason(chr, interval, skill);
                 AutobanFactory.ATTACK_INTERVAL.alert(chr, reason);
                 break;
+            }
             case PASS:
                 return;
         }
 
         long globalInterval = chr.getGlobalInterval(now);
         if (globalInterval < Character.NORMAL_AVG) {
+            String reason = buildAttackIntervalReason(chr, interval, skill);
             AutobanFactory.ATTACK_INTERVAL.addPoint(chr.getAutoBanManager(), reason);
         } else {
             chr.updateGlobalTime(now);
         }
+    }
+
+    private static String buildAttackIntervalReason(Character chr, long interval, int skill) {
+        return "玩家" + chr.getName() + "地图ID：" + chr.getMapId()
+                + "攻击间隔: " + interval + "技能ID：" + skill;
     }
 
     /** 持续施法技能：按住时连续多包，全跳过 */

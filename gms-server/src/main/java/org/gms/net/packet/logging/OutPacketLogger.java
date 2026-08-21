@@ -23,7 +23,7 @@ public class OutPacketLogger extends ChannelOutboundHandlerAdapter implements Pa
             log(packet);
         }
 
-        ctx.write(msg);
+        ctx.write(msg, promise);
     }
 
     @Override

@@ -168,10 +168,9 @@ public class EquipShopService {
                         return;
                     }
 
-                    if (isExcludedEquip(itemId, name, info, ii)) {
+                    if (isExcludedEquip(itemId, name, info)) {
                         return;
                     }
-
                     int reqLevel = org.gms.provider.DataTool.getInt("reqLevel", info, 0);
                     int reqJob = org.gms.provider.DataTool.getInt("reqJob", info, 0);
                     int wholePrice = org.gms.provider.DataTool.getInt("price", info, 0);
@@ -207,7 +206,7 @@ public class EquipShopService {
     /**
      * 判断装备是否属于特殊/非商店装备（Boss专属、勋章、任务专属、不可交易等），是则予以剔除
      */
-    private boolean isExcludedEquip(int itemId, String name, Data info, ItemInformationProvider ii) {
+    private boolean isExcludedEquip(int itemId, String name, Data info) {
         // 1. 勋章全系列（114xxxx 或 islot="Me"）
         if (ItemConstants.isMedal(itemId) || itemId / 10000 == 114) {
             return true;
@@ -220,7 +219,7 @@ public class EquipShopService {
         // 2. 任务 / 组队任务专属装备
         int quest = org.gms.provider.DataTool.getInt("quest", info, 0);
         int pquest = org.gms.provider.DataTool.getInt("pquest", info, 0);
-        if (quest == 1 || pquest == 1 || ii.isQuestItem(itemId) || ii.isPartyQuestItem(itemId)) {
+        if (quest == 1 || pquest == 1) {
             return true;
         }
 
@@ -229,10 +228,10 @@ public class EquipShopService {
         int tradeBlock = org.gms.provider.DataTool.getInt("tradeBlock", info, 0);
         int notSale = org.gms.provider.DataTool.getInt("notSale", info, 0);
         int accountSharable = org.gms.provider.DataTool.getInt("accountSharable", info, 0);
-        if (only == 1 || tradeBlock == 1 || notSale == 1 || accountSharable == 1) {
-            return true;
-        }
-        if (ii.isPickupRestricted(itemId) || ii.isUntradeableRestricted(itemId) || ii.isAccountRestricted(itemId) || ii.isDropRestricted(itemId)) {
+        int pickupBlock = org.gms.provider.DataTool.getInt("pickupBlock", info, 0);
+        int dropBlock = org.gms.provider.DataTool.getInt("dropBlock", info, 0);
+        int equipTradeBlock = org.gms.provider.DataTool.getInt("equipTradeBlock", info, 0);
+        if (only == 1 || tradeBlock == 1 || notSale == 1 || accountSharable == 1 || pickupBlock == 1 || dropBlock == 1 || equipTradeBlock == 1) {
             return true;
         }
 

@@ -47,18 +47,36 @@ public class DataTool {
     }
 
     public static double getDouble(Data data) {
-        return (Double) data.getData();
+        if (data == null || data.getData() == null) {
+            return 0.0;
+        }
+        Object numData = data.getData();
+        if (numData instanceof Number n) {
+            return n.doubleValue();
+        }
+        return (Double) numData;
     }
 
     public static float getFloat(Data data) {
-        return (Float) data.getData();
+        if (data == null || data.getData() == null) {
+            return 0.0f;
+        }
+        Object numData = data.getData();
+        if (numData instanceof Number n) {
+            return n.floatValue();
+        }
+        return (Float) numData;
     }
 
     public static int getInt(Data data) {
         if (data == null || data.getData() == null) {
             return 0;// DEF?
         }
-        return (Integer) data.getData();
+        Object numData = data.getData();
+        if (numData instanceof Number n) {
+            return n.intValue();
+        }
+        return (Integer) numData;
     }
 
     public static int getInt(String path, Data data) {
@@ -105,13 +123,17 @@ public class DataTool {
         if (data == null || data.getData() == null) {
             return def;
         } else if (data.getType() == DataType.STRING) {
-            return Integer.parseInt(getString(data));
+            try {
+                return Integer.parseInt(getString(data));
+            } catch (NumberFormatException e) {
+                return def;
+            }
         } else {
             Object numData = data.getData();
-            if (numData instanceof Integer) {
-                return (Integer) numData;
+            if (numData instanceof Number n) {
+                return n.intValue();
             } else {
-                return (Short) numData;
+                return def;
             }
         }
     }
