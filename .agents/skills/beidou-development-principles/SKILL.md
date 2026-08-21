@@ -26,11 +26,16 @@ description: Mandatory development principles, strict requirement compliance rul
 
 1. **禁止直接修改主干**：
    - 任何代码、脚本或配置修改，**严禁直接在 `main` 或 `master` 分支上操作**；
-2. **标准合并三步法**：
-   - ① 从最新主干创建特性分支：`git checkout -b <feat/fix-branch-name>`
+2. **标准工作流程**：
+   - ① 从最新主干创建分支：`git checkout -b <feat/fix/chore-branch-name>`
    - ② 提交并推送到远端：`git commit` $\rightarrow$ `git push -u origin <branch>`
-   - ③ 创建 Pull Request 并使用 Rebase 合并：`gh pr create` $\rightarrow$ `gh pr merge --rebase --delete-branch`
-3. **主干线性历史维护**：
+   - ③ 创建 Pull Request：`gh pr create`
+   - ④ 确认与 Rebase 合并：经用户确认后使用 `gh pr merge --rebase --delete-branch` 合并
+3. **PR 合并权限与确认红线（严禁擅自合并）**：
+   - **除非经过用户确认功能已完善或者明确需要直接合并，任何功能类与 bug 修复类 PR 不得擅自合并**；
+   - 提交 PR 后，必须等待用户实测验证、明确反馈功能符合预期并同意合并，或明确收到用户直接合并的指令后，方可执行合并操作；
+   - 严禁在 PR 创建后自动、直接执行 `gh pr merge`，必须保留 PR 供用户审查与确认；
+4. **主干线性历史维护**：
    - 保持 Git 提交历史清晰线性，合并后及时同步本地 `master`。
 
 ---
