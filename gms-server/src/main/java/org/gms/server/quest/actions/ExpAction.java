@@ -28,6 +28,7 @@ import org.gms.provider.DataTool;
 import org.gms.server.quest.Quest;
 import org.gms.server.quest.QuestActionType;
 import org.gms.util.NumberTool;
+import org.gms.util.PacketCreator;
 
 /**
  * @author Tyler (Twdtwd)
@@ -60,11 +61,13 @@ public class ExpAction extends AbstractQuestAction {
         float finalRate = useQuestRate ? chr.getQuestExpRate() : chr.getExpRate();
         int totalExp = NumberTool.floatToInt(gain * finalRate);
 
-        chr.gainExp(totalExp, true, true);
+        // 实际发放总经验值（含倍率），但不触发内置全局全额 SHOW_STATUS_INFO
+        chr.gainExp(totalExp, false, false);
+        // 发送原生客户端 SHOW_STATUS_INFO 提示任务原本的基础经验（灰字：得到经验值 (+gain)）
+        chr.getClient().sendPacket(PacketCreator.getShowExpGain(gain, 0, 0, 0, 0, 0, 0, true, true));
 
-        // 如果存在经验加成且非新手保护限制
+        // 如果存在经验加成且非新手保护限制，发送红字倍率奖励明细
         if (totalExp > gain && !chr.hasNoviceExpRate()) {
-            chr.dropMessage(5, "得到经验值 (+" + gain + ")");
 
             boolean hasSpecificBonus = false;
 
