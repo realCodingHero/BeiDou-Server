@@ -87,6 +87,24 @@ public class PlayerStorage {
         }
     }
 
+    public boolean isEmpty() {
+        rlock.lock();
+        try {
+            return storage.isEmpty();
+        } finally {
+            rlock.unlock();
+        }
+    }
+
+    public int size() {
+        rlock.lock();
+        try {
+            return storage.size();
+        } finally {
+            rlock.unlock();
+        }
+    }
+
     public Collection<Character> getAllCharacters() {
         rlock.lock();
         try {
