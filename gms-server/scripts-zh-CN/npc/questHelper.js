@@ -273,7 +273,7 @@ function showQuestDetail(questId) {
             if (isDone) {
                 text += " 收集 #v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 " + progTag + "\r\n\r\n";
             } else {
-                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 (#r" + item.getCurrentCount() + "/" + item.getRequiredCount() + "#k) -> #d[掉落]#k#l\r\n";
+                text += "#L" + (200000 + i) + "# 收集 #v" + item.getItemId() + "# 【#b" + item.getItemName() + "#k】 (#r" + item.getCurrentCount() + "/" + item.getRequiredCount() + "#k) -> #d[出处/掉落]#k#l\r\n";
                 if (item.getRequiredCount() > 1) {
                     if (item.isDeliverable()) {
                         if (item.isQuestExclusive()) {
@@ -283,8 +283,10 @@ function showQuestDetail(questId) {
                         }
                     } else if (item.isQuestExclusive() && item.getCurrentCount() === 0) {
                         text += "#L" + (200000 + i) + "#   └─ #r(专属任务道具: 需背包至少持有1个样本以解锁购买)#k#l\r\n";
+                    } else if ((!item.getDropMobs() || item.getDropMobs().isEmpty()) && (!item.getDropReactors() || item.getDropReactors().isEmpty())) {
+                        text += "#L" + (200000 + i) + "#   └─ #r[无怪物/野外掉落,不可购买]#k#l\r\n";
                     } else if (!item.getDropMobs() || item.getDropMobs().isEmpty()) {
-                        text += "#L" + (200000 + i) + "#   └─ #r[无怪物掉落,不可购买]#k#l\r\n";
+                        text += "#L" + (200000 + i) + "#   └─ #d(野外花草/宝箱采集,点击查看地图)#k#l\r\n";
                     } else {
                         text += "#L" + (200000 + i) + "#   └─ #r(剧情/特殊道具需手动获取)#k#l\r\n";
                     }
@@ -457,7 +459,7 @@ function showMobMapList(mob) {
 }
 
 /**
- * 界面 3-B：展示道具的掉落怪物列表
+ * 界面 3-B：展示道具的掉落怪物与反应堆（花草/宝箱）来源列表
  */
 function showDropMobList(item) {
     if (!item) {
@@ -465,23 +467,41 @@ function showDropMobList(item) {
         return;
     }
     var dropMobs = item.getDropMobs();
+    var dropReactors = item.getDropReactors();
+    var hasMobs = dropMobs && !dropMobs.isEmpty();
+    var hasReactors = dropReactors && !dropReactors.isEmpty();
 
-    if (!dropMobs || dropMobs.size() === 0) {
-        cm.sendOk("道具 【#b" + item.getItemName() + "#k】 暂无野外怪物直接掉落数据（可能为任务剧情专有道具、箱子掉落或商店购买）。");
+    if (!hasMobs && !hasReactors) {
+        cm.sendOk("道具 【#b" + item.getItemName() + "#k】 暂无野外怪物或反应堆直接掉落数据（可能为任务剧情专有道具、商店购买或任务NPC直接赠送）。");
         return;
     }
 
     currentState = STATE_SUB_MENU;
-    var text = "#e#b掉落道具 【" + item.getItemName() + "】 的怪物列表：#k#n\r\n点击怪物查看分布地图并传送：\r\n\r\n";
-    for (var i = 0; i < dropMobs.size(); i++) {
-        var dropMob = dropMobs.get(i);
-        if (dropMob.isBoss()) {
-            text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #r[Boss怪物，已关闭直达传送]#k\r\n";
-        } else {
-            text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
+    var text = "#e#b道具 【" + item.getItemName() + "】 的出处与掉落来源列表：#k#n\r\n点击怪物或采集物查看分布地图并传送：\r\n\r\n";
+
+    if (hasMobs) {
+        text += "#e【 野外怪物掉落 】#n\r\n";
+        for (var i = 0; i < dropMobs.size(); i++) {
+            var dropMob = dropMobs.get(i);
+            if (dropMob.isBoss()) {
+                text += " " + dropMob.getMobName() + " #r[Boss]#k (掉率: " + dropMob.getChanceText() + ") #r[Boss怪物，已关闭直达传送]#k\r\n";
+            } else {
+                text += "#L" + (400000 + i) + "# " + dropMob.getMobName() + " (掉率: " + dropMob.getChanceText() + ", 地图数: " + dropMob.getMaps().size() + ")#l\r\n";
+            }
         }
+        text += "\r\n";
     }
-    text += "\r\n#L999998##b[返回任务详情]#k#l";
+
+    if (hasReactors) {
+        text += "#e【 野外反应堆 / 花草 / 宝箱采集 】#n\r\n";
+        for (var j = 0; j < dropReactors.size(); j++) {
+            var dropReactor = dropReactors.get(j);
+            text += "#L" + (450000 + j) + "# 【采集】 " + dropReactor.getReactorName() + " (掉率: " + dropReactor.getChanceText() + ", 地图数: " + dropReactor.getMaps().size() + ")#l\r\n";
+        }
+        text += "\r\n";
+    }
+
+    text += "#L999998##b[返回任务详情]#k#l";
     cm.sendSimple(text);
 }
 
@@ -533,11 +553,23 @@ function handleSubSelection(selection) {
     }
 
     // 点击了掉落怪物 -> 进入界面 4：展示该怪物的分布地图列表
-    if (selection >= 400000 && selection < 500000) {
+    if (selection >= 400000 && selection < 450000) {
         var index = selection - 400000;
         if (selectedItem && selectedItem.getDropMobs() && index < selectedItem.getDropMobs().size()) {
             var dropMob = selectedItem.getDropMobs().get(index);
             showDropMobMapList(dropMob);
+        } else {
+            showQuestDetail(selectedQuestId);
+        }
+        return;
+    }
+
+    // 点击了掉落反应堆（花草/宝箱） -> 进入界面 4：展示该反应堆的分布地图列表
+    if (selection >= 450000 && selection < 500000) {
+        var rIndex = selection - 450000;
+        if (selectedItem && selectedItem.getDropReactors() && rIndex < selectedItem.getDropReactors().size()) {
+            var dropReactor = selectedItem.getDropReactors().get(rIndex);
+            showDropReactorMapList(dropReactor);
         } else {
             showQuestDetail(selectedQuestId);
         }
@@ -573,7 +605,33 @@ function showDropMobMapList(dropMob) {
         var map = currentMapList.get(i);
         text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
     }
-    text += "\r\n#L999997##b[返回掉落怪物列表]#k#l";
+    text += "\r\n#L999997##b[返回出处来源列表]#k#l";
+    cm.sendSimple(text);
+}
+
+/**
+ * 界面 4-B：展示具体反应堆（花草/宝箱/采集物）的分布地图列表
+ */
+function showDropReactorMapList(dropReactor) {
+    if (!dropReactor) {
+        showDropMobList(selectedItem);
+        return;
+    }
+    currentMapList = dropReactor.getMaps();
+
+    if (!currentMapList || currentMapList.size() === 0) {
+        cm.sendOk("未找到 【" + dropReactor.getReactorName() + "】 的野外地图数据。");
+        return;
+    }
+
+    currentState = STATE_MAP_LIST;
+    var itemName = selectedItem ? selectedItem.getItemName() : "";
+    var text = "#e#b【" + dropReactor.getReactorName() + "】 (产出: " + itemName + ") 分布地图：#k#n\r\n请选择传送目的地：\r\n\r\n";
+    for (var i = 0; i < currentMapList.size(); i++) {
+        var map = currentMapList.get(i);
+        text += "#L" + (500000 + i) + "# " + getMapDisplayWithLock(map) + "#l\r\n";
+    }
+    text += "\r\n#L999997##b[返回出处来源列表]#k#l";
     cm.sendSimple(text);
 }
 

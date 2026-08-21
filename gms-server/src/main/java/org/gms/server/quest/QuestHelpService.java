@@ -113,18 +113,22 @@ public final class QuestHelpService {
 
     private final Map<Integer, Set<Integer>> mobToMaps = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> npcToMaps = new ConcurrentHashMap<>();
+    private final Map<Integer, Set<Integer>> reactorToMaps = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> mapGraph = new ConcurrentHashMap<>();
     private final Map<String, Set<Integer>> nameToMobIds = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> mobAliasMap = new ConcurrentHashMap<>();
     private final Map<Integer, String> mobNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> npcNameCache = new ConcurrentHashMap<>();
+    private final Map<Integer, String> reactorNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, String> itemNameCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> mobLevelCache = new ConcurrentHashMap<>();
     private final Map<Integer, MapLocation> mapLocationCache = new ConcurrentHashMap<>();
     private final Map<Integer, WarpCostInfo> warpCostCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<MapLocation>> mobMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<MapLocation>> npcMapsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, List<MapLocation>> reactorMapsCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<DropMobInfo>> itemDropMobsCache = new ConcurrentHashMap<>();
+    private final Map<Integer, List<DropReactorInfo>> itemDropReactorsCache = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> regularMaterialCache = new ConcurrentHashMap<>();
     private final Map<Integer, Boolean> questExclusiveCache = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> materialUnitPriceCache = new ConcurrentHashMap<>();
@@ -287,8 +291,8 @@ public final class QuestHelpService {
             log.warn("Failed to index WorldMap maps for quest help service", e);
         }
 
-        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} shop items, {} named mobs, {} worldmap maps",
-                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size(), worldMapMaps.size());
+        log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} reactors, {} shop items, {} named mobs, {} worldmap maps",
+                System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), reactorToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size(), worldMapMaps.size());
     }
 
     private void scanDir(DataProvider mapSource, DataEntity entity) {
@@ -356,6 +360,27 @@ public final class QuestHelpService {
                     } else if ("n".equalsIgnoreCase(type)) {
                         npcToMaps.computeIfAbsent(lifeId, k -> ConcurrentHashMap.newKeySet()).add(mapId);
                     }
+                }
+            }
+        }
+
+        // 解析野外反应堆（Reactor：花草、宝箱、矿石、采集物）分布
+        Data reactorData = mapData.getChildByPath("reactor");
+        if (reactorData != null) {
+            for (Data child : reactorData.getChildren()) {
+                int reactorId = DataTool.getInt("id", child, -1);
+                if (reactorId <= 0) {
+                    String idStr = DataTool.getString("id", child, null);
+                    if (idStr != null) {
+                        try {
+                            reactorId = Integer.parseInt(idStr);
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+
+                if (reactorId > 0) {
+                    reactorToMaps.computeIfAbsent(reactorId, k -> ConcurrentHashMap.newKeySet()).add(mapId);
                 }
             }
         }
@@ -734,6 +759,130 @@ public final class QuestHelpService {
             log.error("Failed to query drop data for itemId: {}", itemId, e);
         }
         return Collections.unmodifiableList(dropMobs);
+    }
+
+    public String getReactorName(int reactorId) {
+        return reactorNameCache.computeIfAbsent(reactorId, id -> {
+            switch (id) {
+                case 2001:
+                    return "初级宝箱/野草";
+                case 1002000:
+                    return "射手村草丛";
+                case 1012000:
+                    return "魔法密林花草/植物";
+                case 1072000:
+                    return "诺特勒斯木箱";
+                case 2002000:
+                    return "天空之城野草";
+                case 2112000:
+                    return "扎昆前置矿石/宝箱";
+                case 2202000:
+                    return "玩具城箱子";
+                case 2212000:
+                case 2212001:
+                case 2212002:
+                    return "地球防御本部外星箱子";
+                case 2212003:
+                    return "地球防御本部外星零件箱";
+                case 2212004:
+                    return "地球防御本部发射装置箱";
+                case 2212005:
+                    return "地球防御本部雷达设备";
+                case 2222000:
+                    return "童话村燕子窝/葫芦";
+                case 2302000:
+                case 2302001:
+                    return "水下世界贝壳";
+                case 2302002:
+                    return "水下世界海草";
+                case 2302003:
+                    return "水下世界海螺";
+                case 2502000:
+                    return "武陵坛子/药草";
+                case 2512000:
+                    return "百草堂草药箱";
+                case 2612000:
+                    return "玛加提亚研究箱";
+                default:
+                    break;
+            }
+
+            try {
+                DataProvider reactorSource = DataProviderFactory.getDataProvider(WZFiles.REACTOR);
+                if (reactorSource != null) {
+                    String fileName = StringUtil.getLeftPaddedStr(id + ".img", '0', 11);
+                    Data reactorData = reactorSource.getData(fileName);
+                    if (reactorData != null) {
+                        String info = DataTool.getString("info/info", reactorData, null);
+                        if (info != null && !info.isBlank()) {
+                            if (info.contains("꽃")) return "野外花朵/植物";
+                            if (info.contains("풀")) return "野外草丛/植物";
+                            if (info.contains("상자")) return "野外宝箱/木箱";
+                            if (info.contains("조개")) return "野外贝壳";
+                            if (info.contains("항아리")) return "野外瓦罐/坛子";
+                            if (info.contains("돌") || info.contains("광석")) return "野外矿石/岩石";
+                            if (info.contains("나무")) return "野外树木/木桩";
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+
+            return "野外采集物/反应堆 (ID: " + id + ")";
+        });
+    }
+
+    public List<MapLocation> getMapsForReactor(int reactorId) {
+        ensureInitialized();
+        return reactorMapsCache.computeIfAbsent(reactorId, this::loadMapsForReactor);
+    }
+
+    private List<MapLocation> loadMapsForReactor(int reactorId) {
+        Set<Integer> mapIds = reactorToMaps.get(reactorId);
+        if (mapIds == null || mapIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<MapLocation> result = new ArrayList<>();
+        for (int mapId : mapIds) {
+            result.add(getMapLocation(mapId));
+        }
+        result.sort(Comparator.comparingInt(MapLocation::getMapId));
+        return Collections.unmodifiableList(result);
+    }
+
+    public List<DropReactorInfo> getDropReactorsForItem(int itemId) {
+        ensureInitialized();
+        return itemDropReactorsCache.computeIfAbsent(itemId, this::loadDropReactorsForItem);
+    }
+
+    private List<DropReactorInfo> loadDropReactorsForItem(int itemId) {
+        List<DropReactorInfo> dropReactors = new ArrayList<>();
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT reactorid, chance, questid FROM reactordrops WHERE itemid = ? AND chance >= 0 ORDER BY chance ASC LIMIT 30")) {
+            ps.setInt(1, itemId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int reactorId = rs.getInt("reactorid");
+                    int chance = rs.getInt("chance");
+                    int questId = rs.getInt("questid");
+                    String reactorName = getReactorName(reactorId);
+                    String chanceText;
+                    if (chance <= 1) {
+                        chanceText = "100%";
+                    } else if (chance > 1) {
+                        chanceText = String.format("1/%d", chance);
+                    } else {
+                        chanceText = "普通";
+                    }
+                    List<MapLocation> maps = getMapsForReactor(reactorId);
+                    dropReactors.add(new DropReactorInfo(reactorId, reactorName, chance, chanceText, questId, maps));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to query reactordrops for itemId: {}", itemId, e);
+        }
+        return Collections.unmodifiableList(dropReactors);
     }
 
     public boolean isNativeShopItem(int itemId) {
@@ -2299,6 +2448,48 @@ public final class QuestHelpService {
         }
     }
 
+    public static class DropReactorInfo {
+        private final int reactorId;
+        private final String reactorName;
+        private final int chance;
+        private final String chanceText;
+        private final int questId;
+        private final List<MapLocation> maps;
+
+        public DropReactorInfo(int reactorId, String reactorName, int chance, String chanceText, int questId, List<MapLocation> maps) {
+            this.reactorId = reactorId;
+            this.reactorName = reactorName;
+            this.chance = chance;
+            this.chanceText = chanceText;
+            this.questId = questId;
+            this.maps = maps != null ? maps : Collections.emptyList();
+        }
+
+        public int getReactorId() {
+            return reactorId;
+        }
+
+        public String getReactorName() {
+            return reactorName;
+        }
+
+        public int getChance() {
+            return chance;
+        }
+
+        public String getChanceText() {
+            return chanceText;
+        }
+
+        public int getQuestId() {
+            return questId;
+        }
+
+        public List<MapLocation> getMaps() {
+            return maps;
+        }
+    }
+
     public static class ItemObjective {
         private final int itemId;
         private final String itemName;
@@ -2311,8 +2502,13 @@ public final class QuestHelpService {
         private final int unitPrice;
         private final long totalPrice;
         private final List<DropMobInfo> dropMobs;
+        private final List<DropReactorInfo> dropReactors;
 
         public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, boolean nativeShopItem, boolean questExclusive, boolean sampleUnlocked, int unitPrice, List<DropMobInfo> dropMobs) {
+            this(itemId, itemName, currentCount, requiredCount, deliverable, nativeShopItem, questExclusive, sampleUnlocked, unitPrice, dropMobs, Collections.emptyList());
+        }
+
+        public ItemObjective(int itemId, String itemName, int currentCount, int requiredCount, boolean deliverable, boolean nativeShopItem, boolean questExclusive, boolean sampleUnlocked, int unitPrice, List<DropMobInfo> dropMobs, List<DropReactorInfo> dropReactors) {
             this.itemId = itemId;
             this.itemName = itemName;
             this.currentCount = currentCount;
@@ -2331,6 +2527,7 @@ public final class QuestHelpService {
                 this.totalPrice = 0L;
             }
             this.dropMobs = dropMobs != null ? dropMobs : Collections.emptyList();
+            this.dropReactors = dropReactors != null ? dropReactors : Collections.emptyList();
         }
 
         public int getItemId() {
@@ -2379,6 +2576,10 @@ public final class QuestHelpService {
 
         public List<DropMobInfo> getDropMobs() {
             return dropMobs;
+        }
+
+        public List<DropReactorInfo> getDropReactors() {
+            return dropReactors;
         }
     }
 
