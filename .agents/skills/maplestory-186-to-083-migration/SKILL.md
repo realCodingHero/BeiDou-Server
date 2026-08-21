@@ -71,13 +71,25 @@ v186 and modern MapleStory clients dynamically link all weapon types at runtime 
 - `30`: general 1-handed / universal motion baseline;
 - `49`: gun / ranged motion baseline.
 
-**The v083 Client Constraint**:
-The v083 client (`CItemInfo::IsEquipable`) strictly requires an explicit sub-directory for every equipped weapon type (`30, 31, 32, 33, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49` and modern types `21..28, 52..59`). If a universal cash weapon is imported directly with only `30` and `49`, characters holding claws, bows, staffs, 2H swords, daggers, or polearms will be blocked from equipping it.
+**The v083 Client Constraint & Structural Hierarchy**:
+1. **Explicit Weapon Type Directories**: The v083 client (`CItemInfo::IsEquipable` and `CAvatar::DrawWeapon`) strictly requires an explicit sub-directory for every equipped weapon type (`30, 31, 32, 33, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49` and modern types `21..28, 52..59`).
+2. **Frame-Level Leaf UOLs (Crucial Engine Detail)**: The v083 C++ client engine (`CWzProperty`) does **not** recursively resolve UOLs when traversing action or frame folders. If an action itself is a UOL (e.g. `<uol name="walk1" value="../30/walk1" />`), `pAction->GetProperty("0")` fails, causing `CItemInfo::IsEquipable` to conclude the weapon has no valid frames for that weapon type (e.g. Mage Wand `37`, Staff `38`, Claw `47`, Bow `45`) and block equipping.
+3. **Correct Structure**: Each weapon type must contain real action directories and frame directories (`0`, `1`, `2`...), with leaf-level UOLs pointing directly to the base canvases:
+   ```xml
+   <imgdir name="37">
+     <imgdir name="stand1">
+       <imgdir name="0">
+         <uol name="weapon" value="../../../30/stand1/0/weapon" />
+         <uol name="effect" value="../../../30/stand1/0/effect" />
+       </imgdir>
+     </imgdir>
+   </imgdir>
+   ```
 
 **Required Action**:
 For any universal cash weapon (`170xxxx`) migrated from v186:
 1. Run `WzBridge patch-universal-weapon <source.img> <destination.img>`.
-2. The tool automatically maps all missing weapon types (`31..48`, `21..28`, `52..59`) to `../30/<action>` using lightweight UOL references, and fills any missing action fallbacks in `49`.
+2. The tool automatically constructs full hierarchical action/frame directories and generates leaf-level UOL links `../../../30/<action>/<frame>/<part>` for all weapon types (`31..48`, `21..28`, `52..59`), ensuring 100% compatibility with `CItemInfo::IsEquipable` and `CAvatar`.
 3. Verify that the resulting `.img` can be parsed cleanly by the v083 client and exported to XML before deployment.
 
 ### 5. Choose the correct effect path
