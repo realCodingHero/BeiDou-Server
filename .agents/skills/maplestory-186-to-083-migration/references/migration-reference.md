@@ -177,9 +177,11 @@ If any of these numeric directories is absent from the `.img`, the v083 client r
 
 ### Patching procedure:
 Use `WzBridge patch-universal-weapon <source.img> <destination.img>`. The command:
-1. inspects `30` to enumerate all defined actions (`walk1..2`, `stand1..2`, `swing*`, `stab*`, `shoot*`, `prone*`, `heal`, `fly`, `jump`, `sit`, `ladder`, `rope`);
-2. adds all missing weapon type subdirectories (`31..48`, etc.) populated with `<uol name="<action>" value="../30/<action>" />`;
-3. checks `49` and injects fallback UOLs for any actions missing from `49` (such as ladder, rope, sit, heal, etc.);
+1. inspects `30` to enumerate all defined actions (`walk1..2`, `stand1..2`, `swing*`, `stab*`, `shoot*`, `prone*`, `heal`, `fly`, `jump`, `sit`, `ladder`, `rope`) and their nested frames (`0`, `1`, `2`...);
+2. adds all missing weapon type subdirectories (`31..48`, etc.) populated with explicit action and frame subdirectories, containing leaf-level UOLs pointing directly to base canvases:
+   `<uol name="<part>" value="../../../30/<action>/<frame>/<part>" />` (where part is `weapon`, `effect`, etc.);
+   *Note: Actions and frames must be concrete subdirectories because v083 `CWzProperty` does not recursively resolve UOLs on folder nodes during `CItemInfo::IsEquipable` inspection.*
+3. checks `49` and injects fallback leaf UOLs for any actions/frames missing from `49` (such as ladder, rope, sit, heal, etc.);
 4. serializes the result into a clean GMS-compatible `.img`.
 
 ## Shop and database cautions
