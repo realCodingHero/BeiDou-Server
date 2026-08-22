@@ -58,10 +58,13 @@ public class CompanionAIController {
                     }
                 }
                 companion.setPosition(targetPos);
+                companion.setStance(masterPos.x < targetPos.x ? 1 : 0);
                 masterMap.broadcastMessage(PacketCreator.showForeignEffect(companion.getId(), 1005));
-            } else if (distance > 160 && (now - companionWrapper.getLastMoveTime() > 400)) {
-                // 平滑靠近主人并紧贴地面
-                int newX = compPos.x + (masterPos.x > compPos.x ? 35 : -35);
+                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), companion.getIdleMovement(), 15));
+            } else if (distance > 120 && (now - companionWrapper.getLastMoveTime() > 300)) {
+                // 平滑靠近主人并广播移动包
+                int step = (int) Math.min(distance - 70, 45);
+                int newX = compPos.x + (masterPos.x > compPos.x ? step : -step);
                 Point newPos = new Point(newX, masterPos.y);
                 if (masterMap.getFootholds() != null) {
                     Point below = masterMap.getGroundBelow(newPos);
@@ -70,6 +73,8 @@ public class CompanionAIController {
                     }
                 }
                 companion.setPosition(newPos);
+                companion.setStance(masterPos.x < newPos.x ? 1 : 0);
+                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), companion.getIdleMovement(), 15));
                 companionWrapper.setLastMoveTime(now);
             }
         }
@@ -104,16 +109,16 @@ public class CompanionAIController {
         if (companionJob.isA(Job.CLERIC)) {
             // 检测是否需要治疗
             if (master.getHp() < master.getMaxHp() * 0.8) {
-                if (castSkillIfAvailable(companion, 2301002)) { // 群体治疗 (Heal)
+                if (castSkillIfAvailable(companion, master, 2301002)) { // 群体治疗 (Heal)
                     return true;
                 }
             }
             // 神圣祈祷 (Holy Symbol - 2311003)
-            if (castSkillIfAvailable(companion, 2311003)) {
+            if (castSkillIfAvailable(companion, master, 2311003)) {
                 return true;
             }
             // 祝福 (Bless - 2301004)
-            if (castSkillIfAvailable(companion, 2301004)) {
+            if (castSkillIfAvailable(companion, master, 2301004)) {
                 return true;
             }
         }
@@ -121,11 +126,11 @@ public class CompanionAIController {
         // 枪战士/龙骑士/黑骑士 (130, 131, 132)
         if (companionJob.isA(Job.SPEARMAN)) {
             // 神圣之火 (Hyper Body - 1301007)
-            if (castSkillIfAvailable(companion, 1301007)) {
+            if (castSkillIfAvailable(companion, master, 1301007)) {
                 return true;
             }
             // 极限防御 (Iron Will - 1301006)
-            if (castSkillIfAvailable(companion, 1301006)) {
+            if (castSkillIfAvailable(companion, master, 1301006)) {
                 return true;
             }
         }
@@ -133,7 +138,7 @@ public class CompanionAIController {
         // 刺客/无影人/隐士 (410, 411, 412)
         if (companionJob.isA(Job.ASSASSIN) || companionJob.isA(Job.BANDIT)) {
             // 速度激发 (Haste - 4101003 / 4201003)
-            if (castSkillIfAvailable(companion, 4101003) || castSkillIfAvailable(companion, 4201003)) {
+            if (castSkillIfAvailable(companion, master, 4101003) || castSkillIfAvailable(companion, master, 4201003)) {
                 return true;
             }
         }
@@ -141,7 +146,7 @@ public class CompanionAIController {
         // 猎人/弩弓手/神射手/箭神 (310, 311, 312, 320, 321, 322)
         if (companionJob.isA(Job.BOWMAN)) {
             // 火眼晶晶 (Sharp Eyes - 3121002 / 3221002)
-            if (castSkillIfAvailable(companion, 3121002) || castSkillIfAvailable(companion, 3221002)) {
+            if (castSkillIfAvailable(companion, master, 3121002) || castSkillIfAvailable(companion, master, 3221002)) {
                 return true;
             }
         }
@@ -149,7 +154,7 @@ public class CompanionAIController {
         // 狂战士/十字军/英雄 (110, 111, 112)
         if (companionJob.isA(Job.FIGHTER)) {
             // 愤怒之火 (Rage - 1101006)
-            if (castSkillIfAvailable(companion, 1101006)) {
+            if (castSkillIfAvailable(companion, master, 1101006)) {
                 return true;
             }
         }
@@ -157,7 +162,7 @@ public class CompanionAIController {
         // 拳手/冲锋队长 (510, 511, 512)
         if (companionJob.isA(Job.BRAWLER)) {
             // 超速光学 (Speed Infusion - 5121009)
-            if (castSkillIfAvailable(companion, 5121009)) {
+            if (castSkillIfAvailable(companion, master, 5121009)) {
                 return true;
             }
         }
@@ -165,7 +170,7 @@ public class CompanionAIController {
         return false;
     }
 
-    private static boolean castSkillIfAvailable(Character companion, int skillId) {
+    private static boolean castSkillIfAvailable(Character companion, Character master, int skillId) {
         Skill skill = SkillFactory.getSkill(skillId);
         if (skill == null) {
             return false;
@@ -176,6 +181,12 @@ public class CompanionAIController {
         }
         try {
             skill.getEffect(level).applyTo(companion, true);
+            if (master != null && master.getMap() == companion.getMap()) {
+                skill.getEffect(level).applyTo(master, true);
+            }
+            if (companion.getMap() != null) {
+                companion.getMap().broadcastMessage(PacketCreator.showBuffEffect(companion.getId(), skillId, 1));
+            }
             return true;
         } catch (Exception e) {
             return false;
@@ -215,6 +226,7 @@ public class CompanionAIController {
             int baseLevel = Math.max(1, companion.getLevel());
             int baseDamage = (int) (baseLevel * 45.0 + random.nextInt(Math.max(1, baseLevel * 20)));
             targetMob.damage(companion, baseDamage, false);
+            map.broadcastMessage(PacketCreator.showForeignEffect(companion.getId(), 1003));
             return true;
         }
 
