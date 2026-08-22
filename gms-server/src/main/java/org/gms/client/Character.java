@@ -1328,6 +1328,9 @@ public class Character extends AbstractCharacterObject {
 
     private void eventAfterChangedMap(int map) {
         org.gms.server.quest.QuestHelpService.getInstance().recordMapVisited(this.id, map);
+        if (map != 0 && getMap() != null) {
+            org.gms.server.companion.AccountCompanionManager.getInstance().onMasterChangeMap(this, getMap(), getPosition());
+        }
         EventInstanceManager eim = getEventInstance();
         if (eim != null) {
             eim.afterChangedMap(this, map);
