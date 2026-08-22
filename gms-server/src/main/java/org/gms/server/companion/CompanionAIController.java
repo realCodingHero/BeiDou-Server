@@ -48,12 +48,13 @@ public class CompanionAIController {
         Point masterPos = master.getPosition();
         Point compPos = companion.getPosition();
         if (masterPos != null && compPos != null) {
-            double distance = masterPos.distance(compPos);
+            int masterStance = master.getStance();
+            boolean masterOnRope = (masterStance == 10 || masterStance == 11 || masterStance == 12 || masterStance == 13);
+            double dist = masterPos.distance(compPos);
 
-            if (distance > 500) {
-                // 1. 距离过远瞬移归位 (Teleport Catch-up)
-                companionWrapper.clearTrail();
-                Point targetPos = new Point(masterPos.x + (random.nextBoolean() ? 40 : -40), masterPos.y);
+            // 1. 超出有效范围瞬移归位 (Emergency Distance Recovery)
+            if (dist > 450 || Math.abs(masterPos.y - compPos.y) > 280) {
+                Point targetPos = new Point(masterPos.x + (random.nextBoolean() ? 35 : -35), masterPos.y);
                 if (masterMap.getFootholds() != null) {
                     Point below = masterMap.getGroundBelow(targetPos);
                     if (below != null) {
@@ -66,122 +67,179 @@ public class CompanionAIController {
                 }
 
                 companion.setPosition(targetPos);
-                byte stance = (byte) (masterPos.x < targetPos.x ? 1 : 0);
-                companion.setStance(stance);
+                byte standStance = (byte) (masterPos.x < targetPos.x ? 1 : 0);
+                companion.setStance(standStance);
 
-                AbsoluteLifeMovement teleMove = new AbsoluteLifeMovement(0, targetPos, 100, stance);
+                AbsoluteLifeMovement teleMove = new AbsoluteLifeMovement(0, targetPos, 100, standStance);
                 teleMove.setPixelsPerSecond(new Point(0, 0));
                 teleMove.setFh(fh);
 
                 masterMap.broadcastMessage(PacketCreator.showForeignEffect(companion.getId(), 1005));
                 masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(teleMove)));
                 companionWrapper.setLastMoveTime(now);
-            } else if (distance <= 60 && companionWrapper.getTrailHistory().isEmpty()) {
-                // 2. 已跟随至主人身边，进入自然待机站立姿态 (Idle Stand)
+                return;
+            }
+
+            // 2. 主人在绳子/梯子上 (Master is on a Rope or Ladder)
+            // 随从自主行为：走到绳子正下方的地面踏板待命，面向绳子仰望主人，严禁浮空跳跃或动作僵死
+            if (masterOnRope) {
+                int dx = masterPos.x - compPos.x;
+                int absDx = Math.abs(dx);
+
+                if (absDx > 25) {
+                    // 水平走向绳子正下方地面 (Walk to rope base)
+                    int duration = 150;
+                    boolean toLeft = dx < 0;
+                    int step = Math.min(absDx, 32);
+                    Point targetPos = new Point(compPos.x + (toLeft ? -step : step), compPos.y);
+                    if (masterMap.getFootholds() != null) {
+                        Point below = masterMap.getGroundBelow(targetPos);
+                        if (below != null) {
+                            targetPos = below;
+                        }
+                    }
+                    int fh = 0;
+                    if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
+                        fh = masterMap.getFootholds().findBelow(targetPos).getId();
+                    }
+                    byte walkStance = (byte) (toLeft ? 3 : 2);
+                    short vx = (short) ((targetPos.x - compPos.x) * 1000 / duration);
+
+                    AbsoluteLifeMovement walkMove = new AbsoluteLifeMovement(0, targetPos, duration, walkStance);
+                    walkMove.setPixelsPerSecond(new Point(vx, 0));
+                    walkMove.setFh(fh);
+
+                    companion.setPosition(targetPos);
+                    companion.setStance(walkStance);
+                    masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(walkMove)));
+                    companionWrapper.setLastMoveTime(now);
+                } else {
+                    // 已在绳子正下方：稳稳站在地面上，面向绳子自然站立待命 (Stand naturally below rope)
+                    if (companion.getStance() != 0 && companion.getStance() != 1) {
+                        byte standStance = (byte) (masterPos.x < compPos.x ? 1 : 0);
+                        companion.setStance(standStance);
+
+                        int fh = 0;
+                        if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(compPos) != null) {
+                            fh = masterMap.getFootholds().findBelow(compPos).getId();
+                        }
+                        AbsoluteLifeMovement standMove = new AbsoluteLifeMovement(0, compPos, 100, standStance);
+                        standMove.setPixelsPerSecond(new Point(0, 0));
+                        standMove.setFh(fh);
+                        masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(standMove)));
+                    }
+                }
+                return;
+            }
+
+            // 3. 主人与随从在不同高低层台阶 (Platform / Vertical Level Differences)
+            int dy = masterPos.y - compPos.y;
+            int dx = masterPos.x - compPos.x;
+            int absDx = Math.abs(dx);
+
+            if (dy < -25) {
+                // 主人在上方台阶：随从起跳向上登台 (Companion Jumps Up to Upper Platform)
+                if (absDx < 160 && Math.abs(dy) <= 95) {
+                    int duration = 200;
+                    boolean toLeft = dx < 0;
+                    Point targetPos = new Point(masterPos.x + (toLeft ? 35 : -35), masterPos.y);
+                    if (masterMap.getFootholds() != null) {
+                        Point below = masterMap.getGroundBelow(targetPos);
+                        if (below != null) {
+                            targetPos = below;
+                        }
+                    }
+                    int fh = 0;
+                    if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
+                        fh = masterMap.getFootholds().findBelow(targetPos).getId();
+                    }
+                    byte jumpStance = (byte) (toLeft ? 7 : 6);
+                    short vx = (short) ((targetPos.x - compPos.x) * 1000 / duration);
+                    short vy = (short) ((targetPos.y - compPos.y) * 1000 / duration);
+
+                    AbsoluteLifeMovement jumpMove = new AbsoluteLifeMovement(0, targetPos, duration, jumpStance);
+                    jumpMove.setPixelsPerSecond(new Point(vx, vy));
+                    jumpMove.setFh(fh);
+
+                    companion.setPosition(targetPos);
+                    companion.setStance(jumpStance);
+                    masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(jumpMove)));
+                    companionWrapper.setLastMoveTime(now);
+                    return;
+                }
+            } else if (dy > 35) {
+                // 主人在下方台阶：随从下跳至下层台阶 (Companion Jumps/Drops Down)
+                int duration = 180;
+                boolean toLeft = dx < 0;
+                int step = Math.min(absDx, 35);
+                Point targetPos = new Point(compPos.x + (toLeft ? -step : step), masterPos.y);
+                if (masterMap.getFootholds() != null) {
+                    Point below = masterMap.getGroundBelow(targetPos);
+                    if (below != null) {
+                        targetPos = below;
+                    }
+                }
+                int fh = 0;
+                if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
+                    fh = masterMap.getFootholds().findBelow(targetPos).getId();
+                }
+                byte fallStance = (byte) (toLeft ? 7 : 6);
+                short vx = (short) ((targetPos.x - compPos.x) * 1000 / duration);
+                short vy = (short) ((targetPos.y - compPos.y) * 1000 / duration);
+
+                AbsoluteLifeMovement fallMove = new AbsoluteLifeMovement(0, targetPos, duration, fallStance);
+                fallMove.setPixelsPerSecond(new Point(vx, vy));
+                fallMove.setFh(fh);
+
+                companion.setPosition(targetPos);
+                companion.setStance(fallStance);
+                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(fallMove)));
+                companionWrapper.setLastMoveTime(now);
+                return;
+            }
+
+            // 4. 同层或平地走动跟随 (Horizontal Ground Follow)
+            if (absDx > 55) {
+                int duration = 150;
+                boolean toLeft = dx < 0;
+                int step = Math.min(absDx - 45, 36);
+                Point targetPos = new Point(compPos.x + (toLeft ? -step : step), compPos.y);
+                if (masterMap.getFootholds() != null) {
+                    Point below = masterMap.getGroundBelow(targetPos);
+                    if (below != null) {
+                        targetPos = below;
+                    }
+                }
+                int fh = 0;
+                if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
+                    fh = masterMap.getFootholds().findBelow(targetPos).getId();
+                }
+                byte walkStance = (byte) (toLeft ? 3 : 2);
+                short vx = (short) ((targetPos.x - compPos.x) * 1000 / duration);
+
+                AbsoluteLifeMovement walkMove = new AbsoluteLifeMovement(0, targetPos, duration, walkStance);
+                walkMove.setPixelsPerSecond(new Point(vx, 0));
+                walkMove.setFh(fh);
+
+                companion.setPosition(targetPos);
+                companion.setStance(walkStance);
+                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(walkMove)));
+                companionWrapper.setLastMoveTime(now);
+            } else {
+                // 已到达主人身边：收步站立，面向主人 (Natural Stand)
                 if (companion.getStance() != 0 && companion.getStance() != 1) {
-                    boolean faceLeft = masterPos.x < compPos.x;
-                    byte standStance = (byte) (faceLeft ? 1 : 0);
+                    byte standStance = (byte) (masterPos.x < compPos.x ? 1 : 0);
                     companion.setStance(standStance);
 
                     int fh = 0;
                     if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(compPos) != null) {
                         fh = masterMap.getFootholds().findBelow(compPos).getId();
                     }
-
-                    AbsoluteLifeMovement idleMove = new AbsoluteLifeMovement(0, compPos, 100, standStance);
-                    idleMove.setPixelsPerSecond(new Point(0, 0));
-                    idleMove.setFh(fh);
-
-                    masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(idleMove)));
+                    AbsoluteLifeMovement standMove = new AbsoluteLifeMovement(0, compPos, 100, standStance);
+                    standMove.setPixelsPerSecond(new Point(0, 0));
+                    standMove.setFh(fh);
+                    masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(standMove)));
                 }
-            } else if (distance > 50) {
-                // 3. 轨迹拟真跟随：根据主人历史动作录制重放或目标逼近 (Natural Path Replay & Navigation)
-                int duration = 150; // 150ms 刷新周期
-                Point targetPos = null;
-                byte moveStance = 0;
-                boolean isClimbing = false;
-
-                // 优先从主人留下的移动轨迹中获取下一个路标
-                CompanionCharacter.TrailPoint nextPoint = null;
-                while (!companionWrapper.getTrailHistory().isEmpty()) {
-                    CompanionCharacter.TrailPoint pt = companionWrapper.getTrailHistory().peekFirst();
-                    if (pt.mapId != masterMap.getId() || pt.position.distance(compPos) < 22) {
-                        companionWrapper.getTrailHistory().pollFirst(); // 已经到达或过期点
-                    } else {
-                        nextPoint = pt;
-                        break;
-                    }
-                }
-
-                if (nextPoint != null) {
-                    // 使用轨迹路径点的姿态进行仿真还原
-                    int ptStance = nextPoint.stance;
-                    if (ptStance == 10 || ptStance == 11 || ptStance == 12 || ptStance == 13) {
-                        // 爬绳/爬梯子动作 (Rope/Ladder Climbing)
-                        isClimbing = true;
-                        moveStance = (byte) (ptStance == 11 || ptStance == 13 ? 13 : 12);
-                    } else if (ptStance == 6 || ptStance == 7 || nextPoint.position.y < compPos.y - 20) {
-                        // 跳跃跳台动作 (Jumping / Platform Leaping)
-                        moveStance = (byte) (nextPoint.position.x < compPos.x ? 7 : 6);
-                    } else {
-                        // 走动步态 (Authentic Walking)
-                        moveStance = (byte) (nextPoint.position.x < compPos.x ? 3 : 2);
-                    }
-
-                    int dx = nextPoint.position.x - compPos.x;
-                    int dy = nextPoint.position.y - compPos.y;
-                    int stepX = (int) Math.signum(dx) * Math.min(Math.abs(dx), 45);
-                    int stepY = (int) Math.signum(dy) * Math.min(Math.abs(dy), isClimbing ? 35 : 45);
-                    targetPos = new Point(compPos.x + stepX, compPos.y + stepY);
-
-                    if (targetPos.distance(nextPoint.position) < 25) {
-                        companionWrapper.getTrailHistory().pollFirst();
-                    }
-                } else {
-                    // 无轨迹点时，直觉朝向主人靠近
-                    boolean toLeft = masterPos.x < compPos.x;
-                    int dy = masterPos.y - compPos.y;
-                    if (dy < -35) {
-                        // 主人在上方平台，施展跳跃向上跟随 (Jump Up)
-                        moveStance = (byte) (toLeft ? 7 : 6);
-                    } else if (dy > 45) {
-                        // 主人在下方平台，下跳跟随 (Jump Down)
-                        moveStance = (byte) (toLeft ? 7 : 6);
-                    } else {
-                        // 平地走动 (Walk)
-                        moveStance = (byte) (toLeft ? 3 : 2);
-                    }
-
-                    int step = (int) Math.min(Math.abs(masterPos.x - compPos.x) - 40, 45);
-                    int targetX = compPos.x + (toLeft ? -step : step);
-                    int targetY = masterPos.y;
-                    targetPos = new Point(targetX, targetY);
-                }
-
-                if (!isClimbing && masterMap.getFootholds() != null) {
-                    Point below = masterMap.getGroundBelow(targetPos);
-                    if (below != null && Math.abs(below.y - targetPos.y) < 60) {
-                        targetPos = below;
-                    }
-                }
-
-                int fh = 0;
-                if (!isClimbing && masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
-                    fh = masterMap.getFootholds().findBelow(targetPos).getId();
-                }
-
-                short vx = (short) ((targetPos.x - compPos.x) * 1000 / duration);
-                short vy = (short) ((targetPos.y - compPos.y) * 1000 / duration);
-
-                AbsoluteLifeMovement move = new AbsoluteLifeMovement(0, targetPos, duration, moveStance);
-                move.setPixelsPerSecond(new Point(vx, vy));
-                move.setFh(fh);
-
-                companion.setPosition(targetPos);
-                companion.setStance(moveStance);
-
-                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(move)));
-                companionWrapper.setLastMoveTime(now);
             }
         }
 
