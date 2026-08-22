@@ -291,8 +291,80 @@ public final class QuestHelpService {
             log.warn("Failed to index WorldMap maps for quest help service", e);
         }
 
+        // 6. 扫描 Mob.wz 中怪物的 revive/分裂/变身关联，将母怪刷新地图与别名传播给子怪
+        try {
+            DataProvider mobSource = DataProviderFactory.getDataProvider(WZFiles.MOB);
+            if (mobSource != null && mobSource.getRoot() != null) {
+                Map<Integer, Set<Integer>> parentToChildren = new HashMap<>();
+                scanMobRevives(mobSource, mobSource.getRoot(), parentToChildren);
+                propagateMobReviveMaps(parentToChildren);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to index mob revive relationships for quest help service", e);
+        }
+
         log.info("QuestHelpService initialized life index in {}ms. Indexed {} mobs, {} NPCs, {} reactors, {} shop items, {} named mobs, {} worldmap maps",
                 System.currentTimeMillis() - start, mobToMaps.size(), npcToMaps.size(), reactorToMaps.size(), nativeShopItemPrices.size(), nameToMobIds.size(), worldMapMaps.size());
+    }
+
+    public void propagateMobReviveMaps(Map<Integer, Set<Integer>> parentToChildren) {
+        if (parentToChildren == null || parentToChildren.isEmpty()) {
+            return;
+        }
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (Map.Entry<Integer, Set<Integer>> entry : parentToChildren.entrySet()) {
+                int parentId = entry.getKey();
+                Set<Integer> parentMaps = mobToMaps.get(parentId);
+                if (parentMaps != null && !parentMaps.isEmpty()) {
+                    for (int childId : entry.getValue()) {
+                        Set<Integer> childMaps = mobToMaps.computeIfAbsent(childId, k -> ConcurrentHashMap.newKeySet());
+                        if (childMaps.addAll(parentMaps)) {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        for (Map.Entry<Integer, Set<Integer>> entry : parentToChildren.entrySet()) {
+            int parentId = entry.getKey();
+            for (int childId : entry.getValue()) {
+                addMobAlias(parentId, childId);
+            }
+        }
+    }
+
+    private void scanMobRevives(DataProvider mobSource, DataEntity entity, Map<Integer, Set<Integer>> parentToChildren) {
+        if (entity instanceof DataDirectoryEntry dir) {
+            for (DataFileEntry fileEntry : dir.getFiles()) {
+                String name = fileEntry.getName();
+                if (!name.endsWith(".img")) {
+                    continue;
+                }
+                int parentMobId;
+                try {
+                    parentMobId = Integer.parseInt(name.substring(0, name.length() - 4));
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                Data mobData = mobSource.getData(name);
+                if (mobData != null) {
+                    Data reviveInfo = mobData.getChildByPath("info/revive");
+                    if (reviveInfo != null) {
+                        for (Data child : reviveInfo.getChildren()) {
+                            int childId = DataTool.getInt(child, -1);
+                            if (childId > 0 && childId != parentMobId) {
+                                parentToChildren.computeIfAbsent(parentMobId, k -> new HashSet<>()).add(childId);
+                            }
+                        }
+                    }
+                }
+            }
+            for (DataDirectoryEntry subDir : dir.getSubdirectories()) {
+                scanMobRevives(mobSource, subDir, parentToChildren);
+            }
+        }
     }
 
     private void scanDir(DataProvider mapSource, DataEntity entity) {

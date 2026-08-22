@@ -154,4 +154,68 @@ public class QuestExclusiveItemPurchaseTest {
         assertEquals(1, plantSample.getDropReactors().size());
         assertEquals(1012000, plantSample.getDropReactors().get(0).getReactorId());
     }
+
+    @Test
+    public void testPropagateMobReviveMapsAndKeychainsPurchasable() throws Exception {
+        QuestHelpService service = QuestHelpService.getInstance();
+
+        // 模拟向 mobToMaps 中注入母体怪物刷新地图
+        Field mobToMapsField = QuestHelpService.class.getDeclaredField("mobToMaps");
+        mobToMapsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<Integer, java.util.Set<Integer>> mobToMaps =
+                (java.util.Map<Integer, java.util.Set<Integer>>) mobToMapsField.get(service);
+
+        mobToMaps.computeIfAbsent(3400003, k -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(103040200); // 娃娃机 1
+        mobToMaps.computeIfAbsent(3400005, k -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(103040201); // 娃娃机 2
+        mobToMaps.computeIfAbsent(6130201, k -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(222010400); // 初始小鬼怪
+
+        // 模拟注入 mapLocationCache（单测环境下无需初始化 Spring/MapFactory）
+        Field mapLocationCacheField = QuestHelpService.class.getDeclaredField("mapLocationCache");
+        mapLocationCacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<Integer, QuestHelpService.MapLocation> mapLocationCache =
+                (java.util.Map<Integer, QuestHelpService.MapLocation>) mapLocationCacheField.get(service);
+        mapLocationCache.put(103040200, new QuestHelpService.MapLocation(103040200, "废弃广场5层6层", "废弃都市"));
+        mapLocationCache.put(103040201, new QuestHelpService.MapLocation(103040201, "废弃广场5层6层", "废弃都市"));
+        mapLocationCache.put(222010400, new QuestHelpService.MapLocation(222010400, "童话村隐藏地图", "童话村"));
+
+        // 构造母子怪 revive 映射关系
+        java.util.Map<Integer, java.util.Set<Integer>> parentToChildren = new java.util.HashMap<>();
+        parentToChildren.put(3400003, java.util.Set.of(3400004));
+        parentToChildren.put(3400005, java.util.Set.of(3400006));
+        parentToChildren.put(6130201, java.util.Set.of(6130202));
+
+        // 执行复活地图传播
+        service.propagateMobReviveMaps(parentToChildren);
+
+        // 校验子怪成功继承母怪的野外刷新地图
+        java.util.List<QuestHelpService.MapLocation> yetiMaps = service.getMapsForMob(3400004);
+        assertFalse(yetiMaps.isEmpty());
+        assertEquals(103040200, yetiMaps.get(0).getMapId());
+
+        java.util.List<QuestHelpService.MapLocation> pepeMaps = service.getMapsForMob(3400006);
+        assertFalse(pepeMaps.isEmpty());
+        assertEquals(103040201, pepeMaps.get(0).getMapId());
+
+        java.util.List<QuestHelpService.MapLocation> ghostMaps = service.getMapsForMob(6130202);
+        assertFalse(ghostMaps.isEmpty());
+        assertEquals(222010400, ghostMaps.get(0).getMapId());
+
+        // 模拟 2275 号任务目标：白雪人钥匙链(4000542 x50) 与 小企鹅王钥匙链(4000543 x50)
+        QuestHelpService.DropMobInfo yetiDrop = new QuestHelpService.DropMobInfo(
+                3400004, "白雪人娃娃", 400000, "40.00%", false, yetiMaps
+        );
+        QuestHelpService.ItemObjective yetiKeychain = new QuestHelpService.ItemObjective(
+                4000542, "白雪人钥匙链", 0, 50, true, false, false, false, 320,
+                java.util.List.of(yetiDrop)
+        );
+
+        assertTrue(yetiKeychain.isDeliverable());
+        assertFalse(yetiKeychain.isQuestExclusive());
+        assertEquals(16000L, yetiKeychain.getTotalPrice());
+        assertFalse(yetiKeychain.getDropMobs().isEmpty());
+        assertEquals(103040200, yetiKeychain.getDropMobs().get(0).getMaps().get(0).getMapId());
+    }
 }
+
