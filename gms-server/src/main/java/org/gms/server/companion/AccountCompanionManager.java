@@ -153,6 +153,9 @@ public class AccountCompanionManager {
                 Party.joinParty(compChr, master.getParty().getId(), true);
             }
 
+            // 同步随从头顶组队血条
+            master.sendPacket(PacketCreator.updatePartyMemberHP(compChr.getId(), compChr.getHp(), compChr.getCurrentMaxHp()));
+
             master.dropMessage(5, "成功召唤同账号伙伴 【" + compChr.getName() + "】！");
             return true;
         } catch (Exception e) {

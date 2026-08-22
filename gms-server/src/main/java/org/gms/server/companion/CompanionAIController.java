@@ -9,10 +9,12 @@ import org.gms.server.life.Monster;
 import org.gms.server.maps.MapObject;
 import org.gms.server.maps.MapObjectType;
 import org.gms.server.maps.MapleMap;
+import org.gms.server.movement.AbsoluteLifeMovement;
 import org.gms.util.PacketCreator;
 
 import java.awt.Point;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
@@ -37,7 +39,7 @@ public class CompanionAIController {
 
         long now = System.currentTimeMillis();
 
-        // 1. 地图同步与跟随逻辑 (Map Synchronization & Follow)
+        // 1. 地图同步与跟随逻辑 (Map Synchronization & Smooth Follow)
         if (masterMap.getId() != compMap.getId()) {
             AccountCompanionManager.getInstance().onMasterChangeMap(master, masterMap, master.getPosition());
             return;
@@ -48,8 +50,8 @@ public class CompanionAIController {
         if (masterPos != null && compPos != null) {
             double distance = masterPos.distance(compPos);
 
-            if (distance > 600) {
-                // 距离过远直接瞬移归位
+            if (distance > 550) {
+                // 距离过远瞬移归位 (Instant Teleport with Foreign Effect)
                 Point targetPos = new Point(masterPos.x + (random.nextBoolean() ? 40 : -40), masterPos.y);
                 if (masterMap.getFootholds() != null) {
                     Point below = masterMap.getGroundBelow(targetPos);
@@ -57,25 +59,75 @@ public class CompanionAIController {
                         targetPos = below;
                     }
                 }
+                int fh = 0;
+                if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
+                    fh = masterMap.getFootholds().findBelow(targetPos).getId();
+                }
+
                 companion.setPosition(targetPos);
-                companion.setStance(masterPos.x < targetPos.x ? 1 : 0);
+                byte stance = (byte) (masterPos.x < targetPos.x ? 1 : 0);
+                companion.setStance(stance);
+
+                AbsoluteLifeMovement teleMove = new AbsoluteLifeMovement(0, targetPos, 100, stance);
+                teleMove.setPixelsPerSecond(new Point(0, 0));
+                teleMove.setFh(fh);
+
                 masterMap.broadcastMessage(PacketCreator.showForeignEffect(companion.getId(), 1005));
-                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), companion.getIdleMovement(), 15));
-            } else if (distance > 120 && (now - companionWrapper.getLastMoveTime() > 300)) {
-                // 平滑靠近主人并广播移动包
-                int step = (int) Math.min(distance - 70, 45);
-                int newX = compPos.x + (masterPos.x > compPos.x ? step : -step);
-                Point newPos = new Point(newX, masterPos.y);
-                if (masterMap.getFootholds() != null) {
-                    Point below = masterMap.getGroundBelow(newPos);
-                    if (below != null) {
-                        newPos = below;
+                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(teleMove)));
+                companionWrapper.setLastMoveTime(now);
+            } else if (distance > 80) {
+                // 平滑走动跟随：每 250ms 计算插值步长，下发带速度与时长的标准 Walk 封包
+                if (now - companionWrapper.getLastMoveTime() >= 250) {
+                    int duration = 250;
+                    boolean toLeft = masterPos.x < compPos.x;
+                    int step = (int) Math.min(Math.abs(masterPos.x - compPos.x) - 50, 48);
+                    if (step > 0) {
+                        int targetX = compPos.x + (toLeft ? -step : step);
+                        int targetY = masterPos.y;
+                        Point targetPos = new Point(targetX, targetY);
+                        if (masterMap.getFootholds() != null) {
+                            Point below = masterMap.getGroundBelow(targetPos);
+                            if (below != null) {
+                                targetPos = below;
+                            }
+                        }
+
+                        int fh = 0;
+                        if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(targetPos) != null) {
+                            fh = masterMap.getFootholds().findBelow(targetPos).getId();
+                        }
+
+                        // Stance: 3 = walk left, 2 = walk right
+                        byte walkStance = (byte) (toLeft ? 3 : 2);
+                        short vx = (short) ((targetPos.x - compPos.x) * 1000 / duration);
+
+                        AbsoluteLifeMovement walkMove = new AbsoluteLifeMovement(0, targetPos, duration, walkStance);
+                        walkMove.setPixelsPerSecond(new Point(vx, 0));
+                        walkMove.setFh(fh);
+
+                        companion.setPosition(targetPos);
+                        companion.setStance(walkStance);
+
+                        masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(walkMove)));
+                        companionWrapper.setLastMoveTime(now);
                     }
                 }
-                companion.setPosition(newPos);
-                companion.setStance(masterPos.x < newPos.x ? 1 : 0);
-                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), companion.getIdleMovement(), 15));
-                companionWrapper.setLastMoveTime(now);
+            } else if (distance <= 80 && (companion.getStance() == 2 || companion.getStance() == 3)) {
+                // 已到达主人身边，切换为自然站立姿态（0 或 1）
+                boolean faceLeft = masterPos.x < compPos.x;
+                byte standStance = (byte) (faceLeft ? 1 : 0);
+                companion.setStance(standStance);
+
+                int fh = 0;
+                if (masterMap.getFootholds() != null && masterMap.getFootholds().findBelow(compPos) != null) {
+                    fh = masterMap.getFootholds().findBelow(compPos).getId();
+                }
+
+                AbsoluteLifeMovement idleMove = new AbsoluteLifeMovement(0, compPos, 100, standStance);
+                idleMove.setPixelsPerSecond(new Point(0, 0));
+                idleMove.setFh(fh);
+
+                masterMap.broadcastMessage(PacketCreator.movePlayer(companion.getId(), Collections.singletonList(idleMove)));
             }
         }
 
