@@ -9082,8 +9082,12 @@ public class Character extends AbstractCharacterObject {
         sendPacket(PacketCreator.updatePlayerStats(Collections.singletonList(new Pair<>(stat, Integer.valueOf(newval))), itemReaction, this));
     }
 
+    public boolean isCompanion() {
+        return org.gms.server.companion.AccountCompanionManager.getInstance().isCompanion(this.id);
+    }
+
     public void sendPacket(Packet packet) {
-        if (client != null) {
+        if (client != null && !isCompanion()) {
             client.sendPacket(packet);
         }
     }

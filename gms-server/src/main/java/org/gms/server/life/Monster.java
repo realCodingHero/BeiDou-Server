@@ -1870,7 +1870,7 @@ public class Monster extends AbstractLoadedLife {
         Character newControllerWithPuppet = null;
 
         for (Character chr : getMap().getAllPlayers()) {
-            if (!chr.isHidden() && chr.isLoggedInWorld()) {   // 过滤已断线/awayFromWorld 的幽灵玩家，避免被选为 controller 候选
+            if (!chr.isHidden() && chr.isLoggedInWorld() && !chr.isCompanion()) {   // 过滤已断线/幽灵玩家/随从，避免随从接管怪物控制权导致怪物静止
                 int ctrlMonsSize = chr.getNumControlledMonsters();
 
                 if (isCharacterPuppetInVicinity(chr)) {

@@ -121,10 +121,26 @@ public class AccountCompanionManager {
                 return false;
             }
 
+            CompanionCharacter compWrapper = new CompanionCharacter(compChr, master.getId());
+            currentList.add(compWrapper);
+            companionToMasterMap.put(companionCharId, master.getId());
+
             MapleMap map = master.getMap();
             compChr.setMap(map);
             Point masterPos = master.getPosition();
-            compChr.setPosition(new Point(masterPos.x + 30, masterPos.y));
+            Point spawnPos = new Point(masterPos.x + 35, masterPos.y);
+            if (map.getFootholds() != null) {
+                Point below = map.getGroundBelow(spawnPos);
+                if (below != null) {
+                    spawnPos = below;
+                }
+            }
+            compChr.setPosition(spawnPos);
+            compChr.setStance(0);
+
+            if (master.getClient() != null && master.getClient().getChannelServer() != null) {
+                master.getClient().getChannelServer().getPlayerStorage().addPlayer(compChr);
+            }
 
             map.addPlayer(compChr);
 
@@ -136,10 +152,6 @@ public class AccountCompanionManager {
             if (master.getParty() != null) {
                 Party.joinParty(compChr, master.getParty().getId(), true);
             }
-
-            CompanionCharacter compWrapper = new CompanionCharacter(compChr, master.getId());
-            currentList.add(compWrapper);
-            companionToMasterMap.put(companionCharId, master.getId());
 
             master.dropMessage(5, "成功召唤同账号伙伴 【" + compChr.getName() + "】！");
             return true;
@@ -177,6 +189,10 @@ public class AccountCompanionManager {
                 compChr.getMap().removePlayer(compChr);
             }
 
+            if (master.getClient() != null && master.getClient().getChannelServer() != null) {
+                master.getClient().getChannelServer().getPlayerStorage().removePlayer(compChr.getId());
+            }
+
             // 保存数据
             try {
                 CharacterService characterService = ServerManager.getApplicationContext().getBean(CharacterService.class);
@@ -207,6 +223,9 @@ public class AccountCompanionManager {
             if (compChr != null) {
                 if (compChr.getMap() != null) {
                     compChr.getMap().removePlayer(compChr);
+                }
+                if (master.getClient() != null && master.getClient().getChannelServer() != null) {
+                    master.getClient().getChannelServer().getPlayerStorage().removePlayer(compChr.getId());
                 }
                 try {
                     characterService.saveCharToDB(compChr, false);
@@ -308,7 +327,21 @@ public class AccountCompanionManager {
         for (CompanionCharacter comp : list) {
             Character compChr = comp.getCharacter();
             if (compChr != null) {
-                compChr.changeMap(toMap, targetPos != null ? targetPos : master.getPosition());
+                MapleMap oldMap = compChr.getMap();
+                if (oldMap != null) {
+                    oldMap.removePlayer(compChr);
+                }
+                compChr.setMap(toMap);
+                Point spawnPos = targetPos != null ? targetPos : master.getPosition();
+                if (toMap.getFootholds() != null) {
+                    Point below = toMap.getGroundBelow(spawnPos);
+                    if (below != null) {
+                        spawnPos = below;
+                    }
+                }
+                compChr.setPosition(spawnPos);
+                compChr.setStance(0);
+                toMap.addPlayer(compChr);
             }
         }
     }

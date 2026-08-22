@@ -2560,7 +2560,9 @@ public class MapleMap {
             broadcastSpawnPlayerMapObjectMessage(chr, chr, true);
         }
 
-        sendObjectPlacement(chr.getClient());
+        if (!chr.isCompanion()) {
+            sendObjectPlacement(chr.getClient());
+        }
 
         if (isStartingEventMap() && !eventStarted()) {
             chr.getMap().getPortal("join00").setPortalStatus(false);

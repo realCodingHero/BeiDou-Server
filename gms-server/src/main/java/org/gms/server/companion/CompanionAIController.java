@@ -39,7 +39,7 @@ public class CompanionAIController {
 
         // 1. 地图同步与跟随逻辑 (Map Synchronization & Follow)
         if (masterMap.getId() != compMap.getId()) {
-            companion.changeMap(masterMap, master.getPosition());
+            AccountCompanionManager.getInstance().onMasterChangeMap(master, masterMap, master.getPosition());
             return;
         }
 
@@ -50,13 +50,26 @@ public class CompanionAIController {
 
             if (distance > 600) {
                 // 距离过远直接瞬移归位
-                companion.setPosition(new Point(masterPos.x + (random.nextBoolean() ? 40 : -40), masterPos.y));
+                Point targetPos = new Point(masterPos.x + (random.nextBoolean() ? 40 : -40), masterPos.y);
+                if (masterMap.getFootholds() != null) {
+                    Point below = masterMap.getGroundBelow(targetPos);
+                    if (below != null) {
+                        targetPos = below;
+                    }
+                }
+                companion.setPosition(targetPos);
                 masterMap.broadcastMessage(PacketCreator.showForeignEffect(companion.getId(), 1005));
             } else if (distance > 160 && (now - companionWrapper.getLastMoveTime() > 400)) {
-                // 平滑靠近主人
+                // 平滑靠近主人并紧贴地面
                 int newX = compPos.x + (masterPos.x > compPos.x ? 35 : -35);
-                int newY = masterPos.y;
-                companion.setPosition(new Point(newX, newY));
+                Point newPos = new Point(newX, masterPos.y);
+                if (masterMap.getFootholds() != null) {
+                    Point below = masterMap.getGroundBelow(newPos);
+                    if (below != null) {
+                        newPos = below;
+                    }
+                }
+                companion.setPosition(newPos);
                 companionWrapper.setLastMoveTime(now);
             }
         }
