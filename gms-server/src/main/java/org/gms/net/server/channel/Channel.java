@@ -287,6 +287,9 @@ public final class Channel {
     }
 
     public boolean removePlayer(Character chr) {
+        if (chr != null) {
+            org.gms.server.companion.AccountCompanionManager.getInstance().onMasterLogout(chr);
+        }
         return players.removePlayer(chr.getId()) != null;
     }
 

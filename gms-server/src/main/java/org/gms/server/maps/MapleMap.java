@@ -2557,10 +2557,12 @@ public class MapleMap {
             List<Pair<BuffStat, Integer>> dsstat = Collections.singletonList(new Pair<>(BuffStat.DARKSIGHT, 0));
             broadcastGMMessage(chr, PacketCreator.giveForeignBuff(chr.getId(), dsstat), false);
         } else {
-            broadcastSpawnPlayerMapObjectMessage(chr, chr, true);
+            broadcastSpawnPlayerMapObjectMessage(chr, chr, !chr.isCompanion());
         }
 
-        sendObjectPlacement(chr.getClient());
+        if (!chr.isCompanion()) {
+            sendObjectPlacement(chr.getClient());
+        }
 
         if (isStartingEventMap() && !eventStarted()) {
             chr.getMap().getPortal("join00").setPortalStatus(false);

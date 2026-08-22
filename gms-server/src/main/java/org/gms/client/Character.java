@@ -1328,6 +1328,9 @@ public class Character extends AbstractCharacterObject {
 
     private void eventAfterChangedMap(int map) {
         org.gms.server.quest.QuestHelpService.getInstance().recordMapVisited(this.id, map);
+        if (map != 0 && getMap() != null) {
+            org.gms.server.companion.AccountCompanionManager.getInstance().onMasterChangeMap(this, getMap(), getPosition());
+        }
         EventInstanceManager eim = getEventInstance();
         if (eim != null) {
             eim.afterChangedMap(this, map);
@@ -9079,8 +9082,12 @@ public class Character extends AbstractCharacterObject {
         sendPacket(PacketCreator.updatePlayerStats(Collections.singletonList(new Pair<>(stat, Integer.valueOf(newval))), itemReaction, this));
     }
 
+    public boolean isCompanion() {
+        return org.gms.server.companion.AccountCompanionManager.getInstance().isCompanion(this.id);
+    }
+
     public void sendPacket(Packet packet) {
-        if (client != null) {
+        if (client != null && !isCompanion()) {
             client.sendPacket(packet);
         }
     }

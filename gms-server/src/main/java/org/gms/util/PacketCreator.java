@@ -2279,6 +2279,14 @@ public class PacketCreator {
         return p;
     }
 
+    public static Packet movePlayer(int chrId, List<LifeMovementFragment> moves) {
+        OutPacket p = OutPacket.create(SendOpcode.MOVE_PLAYER);
+        p.writeInt(chrId);
+        p.writeInt(0);
+        serializeMovementList(p, moves);
+        return p;
+    }
+
     public static Packet moveSummon(int cid, int oid, Point startPos, InPacket movementPacket, long movementDataLength) {
         final OutPacket p = OutPacket.create(SendOpcode.MOVE_SUMMON);
         p.writeInt(cid);
