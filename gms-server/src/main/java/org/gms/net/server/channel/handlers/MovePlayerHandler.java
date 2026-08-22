@@ -42,6 +42,8 @@ public final class MovePlayerHandler extends AbstractMovementPacketHandler {
             } else {
                 c.getPlayer().getMap().broadcastMessage(c.getPlayer(), PacketCreator.movePlayer(c.getPlayer().getId(), p, movementDataLength), false);
             }
+
+            org.gms.server.companion.AccountCompanionManager.getInstance().recordMasterMovement(c.getPlayer());
         } catch (EmptyMovementException e) {
         }
     }

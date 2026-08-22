@@ -38,7 +38,7 @@ public class AccountCompanionManager {
     });
 
     private AccountCompanionManager() {
-        scheduler.scheduleWithFixedDelay(this::tickAll, 300, 300, TimeUnit.MILLISECONDS);
+        scheduler.scheduleWithFixedDelay(this::tickAll, 150, 150, TimeUnit.MILLISECONDS);
     }
 
     private void tickAll() {
@@ -328,6 +328,7 @@ public class AccountCompanionManager {
         }
 
         for (CompanionCharacter comp : list) {
+            comp.clearTrail();
             Character compChr = comp.getCharacter();
             if (compChr != null) {
                 MapleMap oldMap = compChr.getMap();
@@ -346,6 +347,24 @@ public class AccountCompanionManager {
                 compChr.setStance(0);
                 toMap.addPlayer(compChr);
             }
+        }
+    }
+
+    public void recordMasterMovement(Character master) {
+        if (master == null) {
+            return;
+        }
+        List<CompanionCharacter> list = activeCompanions.get(master.getId());
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+
+        Point pos = master.getPosition();
+        int stance = master.getStance();
+        int mapId = master.getMapId();
+
+        for (CompanionCharacter comp : list) {
+            comp.addTrailPoint(mapId, pos, stance);
         }
     }
 
