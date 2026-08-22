@@ -25,6 +25,11 @@ function action(mode, type, selection) {
     }
 
     var player = cm.getPlayer();
+    if (player == null) {
+        cm.dispose();
+        return;
+    }
+
     var companions = manager.getCompanions(player);
 
     if (status == 0) {
@@ -32,7 +37,7 @@ function action(mode, type, selection) {
         text += "当前主控: #r" + player.getName() + "#k (Lv." + player.getLevel() + ")\r\n";
         text += "出战伙伴 (" + companions.size() + "/3):\r\n";
 
-        if (companions.isEmpty()) {
+        if (companions.size() == 0) {
             text += "  #7(暂无出战伙伴)#k\r\n";
         } else {
             for (var i = 0; i < companions.size(); i++) {
@@ -42,7 +47,7 @@ function action(mode, type, selection) {
         }
         text += "\r\n请选择操作:\r\n";
         text += "#L1##b1. 召唤同账号伙伴出战#l\r\n";
-        if (!companions.isEmpty()) {
+        if (companions.size() > 0) {
             text += "#L2##r2. 原地即时热切换 / 灵魂接管#l\r\n";
             text += "#L3##d3. 调整伙伴战术模式#l\r\n";
             text += "#L4##k4. 解散伙伴并保存数据#l\r\n";
@@ -55,7 +60,7 @@ function action(mode, type, selection) {
         if (selectedOption == 1) {
             // 召唤伙伴
             var available = manager.getAvailableAccountCharacters(player);
-            if (available.isEmpty()) {
+            if (available.size() == 0) {
                 cm.sendOk("同账号下暂无可召唤的其他角色（或已全部出战）！");
                 cm.dispose();
                 return;

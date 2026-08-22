@@ -25,6 +25,11 @@ function action(mode, type, selection) {
     }
 
     var player = cm.getPlayer();
+    if (player == null) {
+        cm.dispose();
+        return;
+    }
+
     var companions = manager.getCompanions(player);
 
     if (status == 0) {
@@ -32,7 +37,7 @@ function action(mode, type, selection) {
         text += "Main Character: #r" + player.getName() + "#k (Lv." + player.getLevel() + ")\r\n";
         text += "Active Companions (" + companions.size() + "/3):\r\n";
 
-        if (companions.isEmpty()) {
+        if (companions.size() == 0) {
             text += "  #7(No active companions)#k\r\n";
         } else {
             for (var i = 0; i < companions.size(); i++) {
@@ -42,7 +47,7 @@ function action(mode, type, selection) {
         }
         text += "\r\nPlease select an action:\r\n";
         text += "#L1##b1. Summon Account Companion#l\r\n";
-        if (!companions.isEmpty()) {
+        if (companions.size() > 0) {
             text += "#L2##r2. In-Place Hot-Switch Character#l\r\n";
             text += "#L3##d3. Configure Companion Tactics#l\r\n";
             text += "#L4##k4. Dismiss All Companions & Save Data#l\r\n";
@@ -54,7 +59,7 @@ function action(mode, type, selection) {
 
         if (selectedOption == 1) {
             var available = manager.getAvailableAccountCharacters(player);
-            if (available.isEmpty()) {
+            if (available.size() == 0) {
                 cm.sendOk("No other characters available under this account (or all already summoned)!");
                 cm.dispose();
                 return;

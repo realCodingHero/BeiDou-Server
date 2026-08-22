@@ -26,8 +26,8 @@ public class CompanionCommand extends Command {
         AccountCompanionManager manager = AccountCompanionManager.getInstance();
 
         if (params.length == 0) {
-            // 打开随从管理 NPC 菜单
-            NPCScriptManager.getInstance().start(c, 9900004, "companion_manager", player);
+            // 打开随从管理 NPC 菜单 (使用官方通用 NPC 9010000 枫叶运营员，杜绝 WZ 缺失闪退)
+            NPCScriptManager.getInstance().start(c, org.gms.constants.id.NpcId.MAPLE_ADMINISTRATOR, "companion_manager", null);
             return;
         }
 
@@ -122,7 +122,7 @@ public class CompanionCommand extends Command {
                 break;
             }
             default:
-                NPCScriptManager.getInstance().start(c, 9900004, "companion_manager", player);
+                NPCScriptManager.getInstance().start(c, org.gms.constants.id.NpcId.MAPLE_ADMINISTRATOR, "companion_manager", null);
                 break;
         }
     }
